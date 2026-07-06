@@ -1,0 +1,23 @@
+/* Page reset + full-window canvas. The game draws everything else itself. */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0f;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  /* Crisp pixels if we later swap in low-res art; harmless for shapes. */
+  image-rendering: pixelated;
+}

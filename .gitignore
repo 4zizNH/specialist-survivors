@@ -1,0 +1,5 @@
+# Separate project with its own git repository
+word-scramble/
+
+# Local, machine-specific Claude Code permissions
+.claude/settings.local.json

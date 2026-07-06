@@ -1,0 +1,104 @@
+// ui/equipScreen.js
+// The per-character Equip screen. Shows the character's spec + equip slot, then
+// all owned tools: compatible ones are selectable, incompatible ones are greyed
+// out with the reason ("Requires a Blades specialist"). This is where the core
+// specialization rule is enforced and explained.
+
+import { drawToolCard, drawToolDetailPanel } from "./toolCard.js";
+import { SPECIALIZATIONS } from "../data/characters.js";
+import { canEquip, equipReason } from "../meta/inventory.js";
+
+export const EQUIP_COLS = 4;
+
+export function drawEquip(ctx, view, { character, level, tools, selectedIndex, loadout, slots = 1 }) {
+  const w = view.width;
+  const h = view.height;
+  const spec = SPECIALIZATIONS[character.specialization] || { label: character.specialization, color: "#888" };
+
+  ctx.fillStyle = "#0a0a0f";
+  ctx.fillRect(0, 0, w, h);
+
+  // --- Header: portrait, name, spec, equip slot ---
+  ctx.fillStyle = character.color;
+  ctx.beginPath();
+  ctx.arc(58, 56, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0a0a0f";
+  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(character.name[0], 58, 57);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#f0f0f6";
+  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.fillText(`${character.name}`, 96, 50);
+  ctx.font = "700 13px ui-monospace, monospace";
+  ctx.fillStyle = spec.color;
+  ctx.fillText(`${spec.label.toUpperCase()} SPECIALIST · LV ${level}`, 96, 70);
+
+  // Equip slot summary (right side).
+  const equippedNames = (loadout || []).map((t) => t.name);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#9a9ab0";
+  ctx.font = "14px ui-monospace, monospace";
+  ctx.fillText(`Equipped (${equippedNames.length}/${slots}):`, w - 40, 44);
+  ctx.fillStyle = equippedNames.length ? "#e0e0ea" : "#5a5a6c";
+  ctx.font = "700 15px system-ui, sans-serif";
+  ctx.fillText(equippedNames.length ? equippedNames.join(", ") : "— none —", w - 40, 66);
+
+  // Divider + prompt.
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.beginPath();
+  ctx.moveTo(40, 92);
+  ctx.lineTo(w - 40, 92);
+  ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#7a7a8c";
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillText(
+    `Only ${spec.label} tools can be equipped by ${character.name}. Incompatible tools are locked.`,
+    40,
+    112
+  );
+
+  // --- Grid of owned tools ---
+  const cols = EQUIP_COLS;
+  const marginX = 40;
+  const gap = 16;
+  const cardW = (w - marginX * 2 - gap * (cols - 1)) / cols;
+  const cardH = 104;
+  const top = 128;
+
+  const detailTop = h - 160;
+  const equippedIds = new Set((loadout || []).map((t) => t.id));
+  for (let i = 0; i < tools.length; i++) {
+    const tool = tools[i];
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = marginX + col * (cardW + gap);
+    const y = top + row * (cardH + gap);
+    if (y + cardH > detailTop - 10) break;
+    const compatible = canEquip(character, tool);
+    drawToolCard(ctx, x, y, cardW, cardH, tool, {
+      selected: i === selectedIndex,
+      dimmed: !compatible,
+      equipped: equippedIds.has(tool.id),
+      lockText: compatible ? null : equipReason(character, tool),
+    });
+  }
+
+  // Full-stats tooltip for the selected tool — shared with the Collection.
+  drawToolDetailPanel(ctx, view, tools[selectedIndex], detailTop);
+
+  // Controls.
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#5a5a6c";
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillText(
+    "← → ↑ ↓ select      Enter equip      X unequip      Esc back",
+    w / 2,
+    h - 16
+  );
+}
