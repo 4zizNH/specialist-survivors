@@ -8,6 +8,7 @@ import { hintLine } from "./inputHints.js";
 
 export const HUB_OPTIONS = [
   { id: "play", label: "PLAY", desc: "Pick a specialist, equip a tool, enter the arena" },
+  { id: "daily", label: "DAILY CHALLENGE", desc: "Today's fixed seeded run + local leaderboard" },
   { id: "shop", label: "SHOP", desc: "Spend gold on permanent account-wide upgrades" },
   { id: "fusion", label: "FUSION", desc: "Combine duplicate tools into higher rarities" },
   { id: "collection", label: "COLLECTION", desc: "Browse your tools by category and rarity" },
@@ -16,7 +17,9 @@ export const HUB_OPTIONS = [
   { id: "reset", label: "RESET PROGRESS", desc: "Wipe the profile and start fresh (asks first)" },
 ];
 
-export function drawHub(ctx, view, { save, selectedIndex }) {
+// `dailyStatus` (string) overrides the DAILY row's desc with today's live
+// prescription + attempt status, so the hub doubles as the daily card.
+export function drawHub(ctx, view, { save, selectedIndex, dailyStatus }) {
   const w = view.width;
   const h = view.height;
 
@@ -52,12 +55,12 @@ export function drawHub(ctx, view, { save, selectedIndex }) {
     ctx.fillText(`“${title}”`, w / 2, h * 0.2 + 102);
   }
 
-  // Menu options (sized so the 7 rows fit above the footer hint, and never
+  // Menu options (sized so the 8 rows fit above the footer hint, and never
   // wider than a phone viewport).
   const optW = Math.min(420, w - 32);
-  const optH = 52;
-  const gap = 11;
-  let y = h * 0.37;
+  const optH = 48;
+  const gap = 9;
+  let y = h * 0.34;
   for (let i = 0; i < HUB_OPTIONS.length; i++) {
     const opt = HUB_OPTIONS[i];
     const selected = i === selectedIndex;
@@ -68,17 +71,17 @@ export function drawHub(ctx, view, { save, selectedIndex }) {
     ctx.fillStyle = selected ? "rgba(40, 40, 58, 0.98)" : "rgba(18, 18, 26, 0.9)";
     ctx.fill();
     ctx.lineWidth = selected ? 2.5 : 1;
-    ctx.strokeStyle = selected ? "#5ac8ff" : "rgba(255,255,255,0.12)";
+    ctx.strokeStyle = selected ? "#5ac8ff" : opt.id === "daily" ? "rgba(255, 211, 77, 0.4)" : "rgba(255,255,255,0.12)";
     ctx.stroke();
 
     const danger = opt.id === "reset";
     ctx.textAlign = "left";
-    ctx.fillStyle = danger ? (selected ? "#ff8a7a" : "#a05a5a") : selected ? "#ffffff" : "#c0c0d0";
-    ctx.font = "700 18px system-ui, sans-serif";
-    ctx.fillText(opt.label, x + 24, y + 21);
+    ctx.fillStyle = danger ? (selected ? "#ff8a7a" : "#a05a5a") : opt.id === "daily" ? "#ffd34d" : selected ? "#ffffff" : "#c0c0d0";
+    ctx.font = "700 17px system-ui, sans-serif";
+    ctx.fillText(opt.label, x + 22, y + 19);
     ctx.fillStyle = "#7a7a8c";
     ctx.font = "12px system-ui, sans-serif";
-    ctx.fillText(opt.desc, x + 24, y + 39);
+    ctx.fillText(opt.id === "daily" && dailyStatus ? dailyStatus : opt.desc, x + 22, y + 36);
 
     if (selected) {
       ctx.textAlign = "right";

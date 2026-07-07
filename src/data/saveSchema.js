@@ -11,11 +11,13 @@
 // v8: adds the achievements layer — `stats` (lifetime tracking), `achievements`
 // (unlocked ids), `unlockedCharacters` (the roster gate; only the defaults
 // start unlocked), and `titles` (cosmetic).
+// v9: adds the Daily Challenge — `daily` ({ attempts by date, imported friend
+// entries by date }) + a `profileName` for the local leaderboard.
 
 import { CHARACTERS_LIST } from "./characters.js";
 import { DEFAULT_UNLOCKED_CHARACTERS } from "./achievements.js";
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 export const SAVE_KEY = "specialist-survivors:save";
 
 // Starter collection. Flame Saber ×3 is deliberately fusable out of the box,
@@ -79,5 +81,12 @@ export function createDefaultSave() {
     settings: { masterVolume: 1 },
     lastSelectedCharacterId: CHARACTERS_LIST[0].id,
     meta: { totalRuns: 0, bestTimeSec: 0 },
+    profileName: "You", // shown on the local daily leaderboard
+    daily: {
+      // date -> { status: "in_progress"|"done"|"dnf", seed, score, breakdown, timeSec }
+      attempts: {},
+      // date -> [{ name, score, seed, imported: true }]  (friend share codes)
+      imported: {},
+    },
   };
 }

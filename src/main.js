@@ -30,6 +30,19 @@ import { rollUpgrades } from "./systems/upgrades.js";
 import { createEvolutionChests, makeEvolvedDef } from "./systems/evolution.js";
 import { EVOLUTIONS, INPUT } from "./data/balance.js";
 import { PASSIVES } from "./data/passives.js";
+import { seedRng, clearRng } from "./engine/rng.js";
+import { dailyFor } from "./data/daily.js";
+import {
+  startScoredAttempt,
+  recordScoredResult,
+  finalizeStaleAttempts,
+  myRank,
+  myShareCode,
+  importShareCode,
+  getAttempt,
+  canPlayScored,
+} from "./meta/daily.js";
+import { drawDaily, dailyButtons } from "./ui/dailyScreen.js";
 import { drawHud } from "./ui/hud.js";
 import { drawTouchControls } from "./ui/touchControls.js";
 import { drawUpgradeScreen } from "./ui/upgradeScreen.js";
@@ -68,7 +81,7 @@ import {
 } from "./meta/inventory.js";
 import { CHARACTERS_LIST, CHARACTERS_BY_ID } from "./data/characters.js";
 import { RARITY_ORDER } from "./data/rarities.js";
-import { TOOL_CATEGORIES } from "./data/tools.js";
+import { TOOL_CATEGORIES, makeTool, resolveToolWeaponDef } from "./data/tools.js";
 import { WORLD } from "./data/world.js";
 
 const view = createCanvas("game");
@@ -86,6 +99,8 @@ let upgradeOptions = []; // current level-up draft
 let evolutionReveal = null; // data for the evolution reveal overlay
 let evolutionRevealAt = 0; // performance.now() when the reveal started
 let results = { time: 0, level: 1, kills: 0 }; // snapshot for the game-over screen
+let runMode = "normal"; // "normal" | "daily-scored" | "daily-practice"
+let dailyContext = null; // the daily config for the active run (date/seed/prescription)
 camera.follow(player);
 
 // --- Meta / hub ---
@@ -112,6 +127,9 @@ function toastAchievements(defs) {
     writeSave(save);
     toastAchievements(migrated);
   }
+  // Anti-reroll: a scored daily left "in_progress" (tab closed/reloaded
+  // mid-run) is spent as a DNF now, so it can't be retried this session.
+  if (finalizeStaleAttempts(save)) writeSave(save);
 }
 let selectedIndex = Math.max(
   0,
@@ -140,21 +158,24 @@ let equipSel = 0;
 let achievementsScroll = 0; // achievements-screen scroll offset (rows)
 let levelUpSel = 0; // level-up draft cursor (gamepad/keyboard nav)
 let padWarning = false; // "controller disconnected" banner on the pause menu
+let dailySel = 0; // daily-screen button cursor
+let dailyMessage = null; // copy/import feedback { ok, text }
 
 // Allowed flow transitions. The HUB is home base; runs always land back there.
 const machine = createStateMachine(GameState.HUB, {
-  [GameState.HUB]: [GameState.MENU, GameState.COLLECTION, GameState.SHOP, GameState.FUSION, GameState.ACHIEVEMENTS],
+  [GameState.HUB]: [GameState.MENU, GameState.COLLECTION, GameState.SHOP, GameState.FUSION, GameState.ACHIEVEMENTS, GameState.DAILY],
   [GameState.MENU]: [GameState.PLAYING, GameState.EQUIP, GameState.HUB],
   [GameState.COLLECTION]: [GameState.HUB],
   [GameState.SHOP]: [GameState.HUB],
   [GameState.FUSION]: [GameState.HUB],
   [GameState.ACHIEVEMENTS]: [GameState.HUB],
+  [GameState.DAILY]: [GameState.HUB, GameState.PLAYING], // start today's daily
   [GameState.EQUIP]: [GameState.MENU],
   [GameState.PLAYING]: [GameState.PAUSED, GameState.LEVELUP, GameState.EVOLUTION, GameState.GAMEOVER],
   [GameState.PAUSED]: [GameState.PLAYING, GameState.HUB],
   [GameState.LEVELUP]: [GameState.PLAYING],
   [GameState.EVOLUTION]: [GameState.PLAYING],
-  [GameState.GAMEOVER]: [GameState.HUB, GameState.MENU], // MENU = "press C" shortcut to a freshly unlocked character
+  [GameState.GAMEOVER]: [GameState.HUB, GameState.MENU, GameState.DAILY], // MENU = "press C" shortcut; DAILY = return after a daily run
 });
 
 // PAUSED/LEVELUP/EVOLUTION are overlays on the run, not screen changes — no fade there.
@@ -172,26 +193,51 @@ machine.onChange((next, prev) => {
 
 // Start a run with the currently selected character: resolve its persisted-level
 // stats into the run player, reset the run systems, then enter PLAYING.
-function startRun() {
-  const def = CHARACTERS_LIST[selectedIndex];
-  if (!isCharacterUnlocked(save, def.id)) return; // achievement-gated
-  currentCharId = def.id;
-  currentChar = def;
-  save.lastSelectedCharacterId = def.id;
-  writeSave(save);
+// `daily` = null for a normal run, or { date, seed, characterId, baseId,
+// rarity, scored } for a Daily Challenge run.
+function startRun(daily = null) {
+  let def;
+  let loadoutDefs;
 
-  // Shared with the headless sim so starting stats/passives can't diverge.
-  const prog = save.characters[def.id] || { level: 1, xp: 0 };
-  player = createRunPlayer(def, prog, save, WORLD);
-
-  // Empty loadout (e.g. a newly added roster member on an old save): auto-equip
-  // the first compatible owned tool so the run isn't weaponless.
-  if (resolveRunWeaponDefs(save, def.id).length === 0) {
-    const match = getOwnedTools(save).find((t) => t.category === def.specialization);
-    if (match && equipTool(save, def.id, match).ok) writeSave(save);
+  if (daily) {
+    def = CHARACTERS_BY_ID[daily.characterId];
+    runMode = daily.scored ? "daily-scored" : "daily-practice";
+    dailyContext = daily;
+    // FAIRNESS: level 1 + an empty shop disables all meta bonuses (character
+    // levels + shop upgrades), so the board measures play, not grind. The
+    // character's PASSIVE stays — that's identity, not progression.
+    player = createRunPlayer(def, { level: 1, xp: 0 }, { shop: {} }, WORLD);
+    loadoutDefs = [resolveToolWeaponDef(makeTool(daily.baseId, daily.rarity))];
+    seedRng(daily.seed); // everyone on this date shares one deterministic stream
+    // Consume the scored attempt immediately (anti-reroll persistence).
+    if (daily.scored) {
+      startScoredAttempt(save, daily.date, daily.seed);
+      writeSave(save);
+    }
+  } else {
+    def = CHARACTERS_LIST[selectedIndex];
+    if (!isCharacterUnlocked(save, def.id)) return; // achievement-gated
+    runMode = "normal";
+    dailyContext = null;
+    save.lastSelectedCharacterId = def.id;
+    writeSave(save);
+    // Shared with the headless sim so starting stats/passives can't diverge.
+    const prog = save.characters[def.id] || { level: 1, xp: 0 };
+    player = createRunPlayer(def, prog, save, WORLD);
+    // Empty loadout (e.g. a newly added roster member on an old save): auto-equip
+    // the first compatible owned tool so the run isn't weaponless.
+    if (resolveRunWeaponDefs(save, def.id).length === 0) {
+      const match = getOwnedTools(save).find((t) => t.category === def.specialization);
+      if (match && equipTool(save, def.id, match).ok) writeSave(save);
+    }
+    loadoutDefs = resolveRunWeaponDefs(save, def.id);
+    clearRng(); // normal play is unseeded (unchanged feel)
   }
 
-  weapons.setLoadout(resolveRunWeaponDefs(save, def.id)); // equipped tools -> run weapons
+  currentCharId = def.id;
+  currentChar = def;
+
+  weapons.setLoadout(loadoutDefs);
   spawner.reset();
   weapons.reset();
   floatingText.reset();
@@ -202,6 +248,17 @@ function startRun() {
   runTime = 0;
 
   machine.transition(GameState.PLAYING);
+}
+
+// The hub's DAILY row desc: today's prescription + attempt status (so the hub
+// doubles as the daily card).
+function dailyStatusLine() {
+  const d = dailyFor();
+  const char = CHARACTERS_BY_ID[d.characterId];
+  const who = `${char ? char.name : d.characterId} · ${d.rarity} ${d.baseId.replace(/_/g, " ")}`;
+  const a = getAttempt(save, d.date);
+  const status = a && a.status === "done" ? `score ${a.score.toLocaleString()}` : a && a.status === "dnf" ? "attempt spent" : "not played";
+  return `${who} — ${status}`;
 }
 
 // --- Hub sub-screen helpers ---
@@ -240,8 +297,18 @@ function moveGrid(sel, len, cols, code) {
   return sel;
 }
 
-// Restart the current run with the same character (from the pause menu).
+// Restart the current run (from the pause menu). A scored daily can't be
+// restarted — the attempt is already consumed — so it bounces to the hub
+// instead of re-rolling. Practice dailies restart as practice.
 function restartRun() {
+  if (runMode === "daily-scored") {
+    machine.transition(GameState.HUB);
+    return;
+  }
+  if (runMode === "daily-practice" && dailyContext) {
+    startRun({ ...dailyContext, scored: false });
+    return;
+  }
   const idx = CHARACTERS_LIST.findIndex((c) => c.id === currentCharId);
   if (idx !== -1) selectedIndex = idx;
   startRun(); // PAUSED -> PLAYING is an allowed transition
@@ -318,8 +385,9 @@ function openEvolution(chest) {
   machine.transition(GameState.EVOLUTION);
 }
 
-// End the run: grant performance-based rewards (character XP, gold, possible
-// tool drop), persist, snapshot for the reward screen.
+// End the run. Normal + scored-daily runs grant rewards and evaluate
+// achievements; a scored daily additionally records its score to the local
+// board. Practice dailies grant nothing and record nothing (warm-up only).
 function endRun() {
   const def = CHARACTERS_BY_ID[currentCharId];
   const runStats = {
@@ -328,6 +396,18 @@ function endRun() {
     kills: weapons.kills,
     bossKills: weapons.bossKills,
   };
+  fx.onPlayerDeath();
+
+  // Practice daily: no rewards, no score, no stat banking.
+  if (runMode === "daily-practice") {
+    results = { ...runStats, daily: { practice: true } };
+    machine.transition(GameState.GAMEOVER);
+    return;
+  }
+
+  // Rewards apply to normal + scored-daily runs (playing the daily never feels
+  // like a detour). Meta bonuses were off during the run, but rewards earned
+  // still bank to the profile.
   const reward = grantRunRewards(save, currentCharId, runStats); // mutates the save
 
   // Achievement checkpoint (end of run): bank the run's raw numbers into the
@@ -335,10 +415,22 @@ function endRun() {
   // levels / tool drops / run counts all count.
   recordRunStats(save, runStats, def?.specialization);
   const newAchievements = evaluateAchievements(save);
+
+  let daily = null;
+  if (runMode === "daily-scored" && dailyContext) {
+    const { total, parts } = recordScoredResult(save, dailyContext.date, runStats);
+    daily = {
+      date: dailyContext.date,
+      total,
+      parts,
+      rank: myRank(save, dailyContext.date),
+      code: myShareCode(save, dailyContext.date),
+    };
+  }
+
   writeSave(save);
   toastAchievements(newAchievements);
 
-  fx.onPlayerDeath();
   const unlockedCharId = newAchievements.find((a) => a.reward?.characterId)?.reward.characterId;
   results = {
     ...runStats,
@@ -347,6 +439,7 @@ function endRun() {
     character: { name: def ? def.name : currentCharId, ...reward.characterXp },
     achievements: newAchievements,
     unlockedCharacter: unlockedCharId ? CHARACTERS_BY_ID[unlockedCharId] : null,
+    daily,
   };
   machine.transition(GameState.GAMEOVER);
 }
@@ -371,12 +464,52 @@ function activateHubOption() {
   } else if (dest === "achievements") {
     achievementsScroll = 0;
     machine.transition(GameState.ACHIEVEMENTS);
+  } else if (dest === "daily") {
+    dailySel = 0;
+    dailyMessage = null;
+    machine.transition(GameState.DAILY);
   } else if (dest === "reset") {
     confirmReset = true;
   } else {
     // "play" and "roster" both open the character roster; from there Play
     // continues into equip/run, Roster is for browsing.
     machine.transition(GameState.MENU);
+  }
+}
+
+// Daily-screen button actions. Copy/import use the clipboard as an honest
+// stand-in for a leaderboard backend (a real backend would POST/GET here).
+function activateDailyButton(id) {
+  const d = dailyFor();
+  if (id === "scored") {
+    if (canPlayScored(save, d.date)) startRun({ ...d, scored: true });
+  } else if (id === "practice") {
+    startRun({ ...d, scored: false });
+  } else if (id === "copy") {
+    const code = myShareCode(save, d.date);
+    if (code && navigator.clipboard) {
+      navigator.clipboard.writeText(code).then(
+        () => (dailyMessage = { ok: true, text: "Share code copied to clipboard!" }),
+        () => (dailyMessage = { ok: false, text: `Code: ${code}` })
+      );
+    } else {
+      dailyMessage = code ? { ok: true, text: `Code: ${code}` } : null;
+    }
+  } else if (id === "import") {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(
+        (text) => {
+          const r = importShareCode(save, text.trim());
+          if (r.ok) writeSave(save);
+          dailyMessage = { ok: r.ok, text: r.ok ? `Imported ${r.entry.name}'s score!` : r.reason };
+        },
+        () => (dailyMessage = { ok: false, text: "Clipboard blocked — paste not available" })
+      );
+    } else {
+      dailyMessage = { ok: false, text: "Clipboard not available in this browser" };
+    }
+  } else if (id === "back") {
+    machine.transition(GameState.HUB);
   }
 }
 
@@ -513,6 +646,19 @@ function handleTransitions() {
       break;
     }
 
+    case GameState.DAILY: {
+      const buttons = dailyButtons(save, dailyFor().date);
+      if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
+      else if (pressed("navUp")) dailySel = (dailySel + buttons.length - 1) % buttons.length;
+      else if (pressed("navDown")) dailySel = (dailySel + 1) % buttons.length;
+      else if (tapSel !== null) {
+        dailySel = tapSel;
+        activateDailyButton(buttons[tapSel]?.id);
+      } else if (pressed("confirm")) activateDailyButton(buttons[dailySel]?.id);
+      if (dailySel >= buttons.length) dailySel = Math.max(0, buttons.length - 1);
+      break;
+    }
+
     case GameState.COLLECTION: {
       const { list } = collectionTools();
       if (pressed("filterCat") || tapId === "filterCat") {
@@ -617,8 +763,17 @@ function handleTransitions() {
       break;
 
     case GameState.GAMEOVER:
-      if (pressed("confirm") || tapId === "continue") machine.transition(GameState.HUB);
-      else if ((pressed("tryChar") || tapId === "tryChar") && results.unlockedCharacter) {
+      // Copy the daily share code (tap only).
+      if (tapId === "copyDaily" && results.daily && results.daily.code) {
+        if (navigator.clipboard) navigator.clipboard.writeText(results.daily.code).catch(() => {});
+      } else if (pressed("confirm") || tapId === "continue") {
+        // A daily run returns to the daily screen; normal runs go to the hub.
+        if (results.daily) {
+          dailySel = 0;
+          dailyMessage = null;
+          machine.transition(GameState.DAILY);
+        } else machine.transition(GameState.HUB);
+      } else if ((pressed("tryChar") || tapId === "tryChar") && results.unlockedCharacter) {
         // Shortcut: jump straight to the freshly unlocked specialist.
         const idx = CHARACTERS_LIST.findIndex((c) => c.id === results.unlockedCharacter.id);
         if (idx !== -1) selectedIndex = idx;
@@ -833,9 +988,13 @@ function render() {
       drawAchievements(ctx, view, { save, scroll: achievementsScroll });
       break;
 
+    case GameState.DAILY:
+      drawDaily(ctx, view, { save, selectedButton: dailySel, message: dailyMessage });
+      break;
+
     case GameState.HUB:
     default:
-      drawHub(ctx, view, { save, selectedIndex: hubSel });
+      drawHub(ctx, view, { save, selectedIndex: hubSel, dailyStatus: dailyStatusLine() });
       if (confirmReset) drawResetConfirm(ctx, view);
       break;
   }
@@ -914,6 +1073,18 @@ if (typeof window !== "undefined") {
       return r;
     },
     startRun,
+    // Daily-challenge inspection/testing.
+    get daily() {
+      return {
+        today: dailyFor(),
+        runMode,
+        attempts: JSON.parse(JSON.stringify(save.daily.attempts)),
+        imported: JSON.parse(JSON.stringify(save.daily.imported)),
+      };
+    },
+    startDaily(scored = true) {
+      startRun({ ...dailyFor(), scored });
+    },
     machine,
     xp,
     weapons,

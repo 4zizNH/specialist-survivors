@@ -128,6 +128,12 @@ function normalize(loaded) {
       : [],
     shop: { ...base.shop, ...(loaded.shop || {}) },
     settings: { ...base.settings, ...(loaded.settings || {}) },
+    // v8 → v9 (daily challenge): backfill the daily store + profile name.
+    profileName: typeof loaded.profileName === "string" ? loaded.profileName : base.profileName,
+    daily: {
+      attempts: { ...(loaded.daily?.attempts || {}) },
+      imported: { ...(loaded.daily?.imported || {}) },
+    },
   };
 
   // v7 → v8 (achievements): pre-v8 saves have no roster gate. Migrate

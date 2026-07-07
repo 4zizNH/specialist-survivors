@@ -14,6 +14,7 @@ import { hintLine } from "./inputHints.js";
 export function drawGameOver(ctx, view, results) {
   const w = view.width;
   const h = view.height;
+  const daily = results.daily || null;
 
   ctx.fillStyle = "#0a0a0f";
   ctx.fillRect(0, 0, w, h);
@@ -21,9 +22,9 @@ export function drawGameOver(ctx, view, results) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  ctx.fillStyle = "#ff5a5a";
+  ctx.fillStyle = daily ? (daily.practice ? "#7ad0ff" : "#ffd34d") : "#ff5a5a";
   ctx.font = "700 58px system-ui, sans-serif";
-  ctx.fillText("RUN OVER", w / 2, 96);
+  ctx.fillText(daily ? (daily.practice ? "PRACTICE OVER" : "DAILY COMPLETE") : "RUN OVER", w / 2, 96);
 
   // --- Run stats row ---
   const stats = [
@@ -44,10 +45,27 @@ export function drawGameOver(ctx, view, results) {
     sx += colW;
   }
 
-  // --- Rewards panel ---
   const panelW = Math.min(560, w - 80);
   const panelX = w / 2 - panelW / 2;
   const panelY = 220;
+
+  // Daily runs replace the rewards panel with a score breakdown (scored) or a
+  // simple practice note; normal runs show the rewards panel below.
+  if (daily) {
+    drawDailyResult(ctx, view, daily, panelX, panelY, panelW);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#7a7a8c";
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText(
+      hintLine("Press Enter to return to the hub", "Press Ⓐ to return to the hub", "Tap to return to the hub"),
+      w / 2,
+      h - 30
+    );
+    addRegion("continue", 0, h - 64, w, 64);
+    return;
+  }
+
+  // --- Rewards panel ---
   const panelH = 300;
   roundRect(ctx, panelX, panelY, panelW, panelH, 14);
   ctx.fillStyle = "rgba(18, 18, 28, 0.95)";
@@ -166,6 +184,99 @@ export function drawGameOver(ctx, view, results) {
   );
   // Touch: the bottom strip returns to the hub (doesn't overlap the banner).
   addRegion("continue", 0, h - 64, w, 64);
+}
+
+// Daily results: a transparent score breakdown + local rank + share code
+// (scored), or a plain note (practice).
+function drawDailyResult(ctx, view, daily, x, y, w) {
+  const h = daily.practice ? 120 : 300;
+  roundRect(ctx, x, y, w, h, 14);
+  ctx.fillStyle = "rgba(18, 18, 28, 0.95)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = daily.practice ? "rgba(122,208,255,0.4)" : "rgba(255,211,77,0.5)";
+  ctx.stroke();
+
+  if (daily.practice) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#7ad0ff";
+    ctx.font = "700 18px system-ui, sans-serif";
+    ctx.fillText("PRACTICE RUN", x + w / 2, y + 40);
+    ctx.fillStyle = "#9a9ab0";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("Not scored · no rewards — your scored attempt is untouched.", x + w / 2, y + 74);
+    return;
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffd34d";
+  ctx.font = "700 18px system-ui, sans-serif";
+  ctx.fillText("— DAILY SCORE —", x + w / 2, y + 30);
+
+  // Breakdown rows.
+  const p = daily.parts || { time: 0, kills: 0, level: 0, boss: 0 };
+  const rows = [
+    ["Time survived", p.time],
+    ["Kills", p.kills],
+    ["Level reached", p.level],
+    ["Bosses slain", p.boss],
+  ];
+  let ry = y + 66;
+  ctx.font = "15px ui-monospace, monospace";
+  for (const [label, pts] of rows) {
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#9a9ab0";
+    ctx.fillText(label, x + 30, ry);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#e0e0ea";
+    ctx.fillText(`+${pts.toLocaleString()}`, x + w - 30, ry);
+    ry += 26;
+  }
+  // Total.
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.beginPath();
+  ctx.moveTo(x + 30, ry - 8);
+  ctx.lineTo(x + w - 30, ry - 8);
+  ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#ffd34d";
+  ctx.font = "700 20px system-ui, sans-serif";
+  ctx.fillText("TOTAL", x + 30, ry + 16);
+  ctx.textAlign = "right";
+  ctx.font = "700 24px ui-monospace, monospace";
+  ctx.fillText(daily.total.toLocaleString(), x + w - 30, ry + 16);
+  ry += 42;
+
+  // Rank.
+  ctx.textAlign = "center";
+  ctx.font = "600 14px system-ui, sans-serif";
+  ctx.fillStyle = "#7ad0ff";
+  ctx.fillText(
+    daily.rank ? `Local rank today: #${daily.rank.rank} of ${daily.rank.of}` : "Posted to today's local board",
+    x + w / 2,
+    ry
+  );
+  ry += 26;
+
+  // Share code + copy button.
+  ctx.fillStyle = "#7a7a8c";
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillText(daily.code, x + w / 2, ry);
+  const bw = 150;
+  const bx = x + w / 2 - bw / 2;
+  const byy = ry + 12;
+  roundRect(ctx, bx, byy, bw, 30, 8);
+  ctx.fillStyle = "rgba(90,200,255,0.15)";
+  ctx.fill();
+  ctx.strokeStyle = "#5ac8ff";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "#5ac8ff";
+  ctx.font = "700 13px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Copy Share Code", x + w / 2, byy + 16);
+  ctx.textBaseline = "middle";
+  addRegion("copyDaily", bx - 4, byy - 4, bw + 8, 38);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

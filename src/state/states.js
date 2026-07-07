@@ -9,6 +9,7 @@ export const GameState = Object.freeze({
   SHOP: "SHOP", // meta-upgrade shop (spend gold)
   FUSION: "FUSION", // combine duplicate tools into higher rarities
   ACHIEVEMENTS: "ACHIEVEMENTS", // milestones, rewards, roster unlocks
+  DAILY: "DAILY", // daily challenge: prescription + local leaderboard
   PLAYING: "PLAYING", // an active run in the arena
   PAUSED: "PAUSED", // run frozen, overlay shown
   LEVELUP: "LEVELUP", // run frozen, upgrade draft shown
