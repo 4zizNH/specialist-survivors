@@ -10,6 +10,8 @@ import {
   isAchievementUnlocked,
   rewardText,
 } from "../meta/achievements.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, drawBackChip, isTouch } from "./inputHints.js";
 
 const ROW_H = 62;
 const ROW_GAP = 10;
@@ -55,8 +57,8 @@ export function drawAchievements(ctx, view, { save, scroll }) {
   const rows = achievementRows(save);
   const top = 104;
   const bottom = h - 40;
-  const x = Math.max(40, w / 2 - 380);
-  const width = Math.min(760, w - 80);
+  const x = Math.max(16, w / 2 - 380);
+  const width = Math.min(760, w - 32);
 
   ctx.save();
   ctx.beginPath();
@@ -85,7 +87,34 @@ export function drawAchievements(ctx, view, { save, scroll }) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("↑ ↓ scroll      Esc back", w / 2, h - 16);
+  ctx.fillText(
+    hintLine("↑ ↓ scroll      Esc back", "▲ ▼ scroll      Ⓑ back", "▲ ▼ to scroll"),
+    w / 2,
+    h - 16
+  );
+  drawBackChip(ctx, view);
+
+  // Touch: chevron scroll buttons (right edge, 44px+).
+  if (isTouch()) {
+    scrollChevron(ctx, w - 56, h / 2 - 60, "▲", "scrollUp");
+    scrollChevron(ctx, w - 56, h / 2 + 12, "▼", "scrollDown");
+  }
+}
+
+function scrollChevron(ctx, x, y, glyph, regionId) {
+  ctx.beginPath();
+  ctx.arc(x + 22, y + 22, 22, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(24, 24, 34, 0.9)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.stroke();
+  ctx.fillStyle = "#cfcfe0";
+  ctx.font = "700 17px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(glyph, x + 22, y + 23);
+  addRegion(regionId, x - 4, y - 4, 52, 52);
 }
 
 function drawRow(ctx, x, y, w, { def, done, cur, goal }) {

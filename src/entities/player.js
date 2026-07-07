@@ -2,21 +2,16 @@
 // The player avatar. Colored circle with a facing indicator; later its stats
 // come from the selected character + equipped tools.
 //
-// Movement is top-down 8-directional (WASD + arrows), diagonals normalized.
-// Health: contact damage is applied via takeDamage(), which grants brief
-// invulnerability frames (iframes) so a swarm can't delete you in one frame.
-// Slow passive regen ticks while alive. render() draws in WORLD space.
+// Movement reads the input layer's ANALOG moveVector() — keyboard is digital,
+// gamepad stick / touch joystick give partial speeds — so the player is
+// input-device-agnostic. Health: contact damage is applied via takeDamage(),
+// which grants brief invulnerability frames (iframes) so a swarm can't delete
+// you in one frame. Slow passive regen ticks while alive. render() draws in
+// WORLD space.
 
-import { isDown } from "../engine/input.js";
-
-const UP = ["KeyW", "ArrowUp"];
-const DOWN = ["KeyS", "ArrowDown"];
-const LEFT = ["KeyA", "ArrowLeft"];
-const RIGHT = ["KeyD", "ArrowRight"];
+import { moveVector } from "../engine/input.js";
 
 const IFRAME_DURATION = 0.5; // seconds of invulnerability after a hit
-
-const anyDown = (codes) => codes.some(isDown);
 
 export function createPlayer(x, y) {
   return {
@@ -63,19 +58,14 @@ export function createPlayer(x, y) {
         this.hp = Math.min(this.maxHp, this.hp + this.regen * dt);
       }
 
-      let dx = 0;
-      let dy = 0;
-      if (anyDown(UP)) dy -= 1;
-      if (anyDown(DOWN)) dy += 1;
-      if (anyDown(LEFT)) dx -= 1;
-      if (anyDown(RIGHT)) dx += 1;
-
+      // Analog movement: magnitude ≤ 1 (stick/joystick tilt = partial speed).
+      const mv = moveVector();
+      const dx = mv.x;
+      const dy = mv.y;
       if (dx !== 0 || dy !== 0) {
-        const inv = 1 / Math.hypot(dx, dy);
-        dx *= inv;
-        dy *= inv;
-        this.faceX = dx;
-        this.faceY = dy;
+        const inv = 1 / (Math.hypot(dx, dy) || 1);
+        this.faceX = dx * inv;
+        this.faceY = dy * inv;
       }
 
       // Adrenaline-style passives: faster while below half HP.

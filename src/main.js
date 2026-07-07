@@ -6,7 +6,16 @@
 
 import { createCanvas } from "./engine/canvas.js";
 import { createLoop } from "./engine/loop.js";
-import { initInput, wasPressed, endFrameInput } from "./engine/input.js";
+import {
+  initInput,
+  updateInput,
+  pressed,
+  endFrameInput,
+  consumeTap,
+  setTouchJoystickEnabled,
+  padDisconnected,
+} from "./engine/input.js";
+import { clearRegions, hitRegion } from "./engine/hitRegions.js";
 import { createCamera } from "./engine/camera.js";
 import { drawBackground } from "./engine/background.js";
 import { createStateMachine } from "./state/stateMachine.js";
@@ -19,18 +28,19 @@ import { createXpSystem } from "./systems/xp.js";
 import { createFx } from "./systems/fx.js";
 import { rollUpgrades } from "./systems/upgrades.js";
 import { createEvolutionChests, makeEvolvedDef } from "./systems/evolution.js";
-import { EVOLUTIONS } from "./data/balance.js";
+import { EVOLUTIONS, INPUT } from "./data/balance.js";
 import { PASSIVES } from "./data/passives.js";
 import { drawHud } from "./ui/hud.js";
+import { drawTouchControls } from "./ui/touchControls.js";
 import { drawUpgradeScreen } from "./ui/upgradeScreen.js";
 import { drawEvolutionScreen, EVOLUTION_DISMISS_DELAY } from "./ui/evolutionScreen.js";
 import { drawGameOver } from "./ui/gameoverScreen.js";
 import { drawCharacterSelect } from "./ui/characterSelect.js";
-import { drawCollection, COLLECTION_COLS } from "./ui/collectionScreen.js";
-import { drawEquip, EQUIP_COLS } from "./ui/equipScreen.js";
+import { drawCollection, collectionCols } from "./ui/collectionScreen.js";
+import { drawEquip, equipCols } from "./ui/equipScreen.js";
 import { drawHub, HUB_OPTIONS, drawResetConfirm } from "./ui/hubScreen.js";
 import { drawShop } from "./ui/shopScreen.js";
-import { drawFusion, FUSION_COLS } from "./ui/fusionScreen.js";
+import { drawFusion, fusionCols } from "./ui/fusionScreen.js";
 import { fuse, fusionInfo } from "./meta/fusion.js";
 import { drawPauseMenu, drawSettings, PAUSE_OPTIONS } from "./ui/pauseMenu.js";
 import { createToasts } from "./ui/toasts.js";
@@ -67,7 +77,7 @@ const BASE_PICKUP_RADIUS = 80;
 
 const view = createCanvas("game");
 const { ctx } = view;
-initInput();
+initInput(view.canvas, INPUT); // action layer: keyboard + gamepad + touch
 
 const camera = createCamera(view);
 let player = createPlayer(WORLD.width / 2, WORLD.height / 2);
@@ -132,6 +142,8 @@ let collectionCatIdx = 0; // 0 = All, else TOOL_CATEGORIES[idx - 1]
 let collectionRarIdx = 0; // 0 = All, else RARITY_ORDER[idx - 1]
 let equipSel = 0;
 let achievementsScroll = 0; // achievements-screen scroll offset (rows)
+let levelUpSel = 0; // level-up draft cursor (gamepad/keyboard nav)
+let padWarning = false; // "controller disconnected" banner on the pause menu
 
 // Allowed flow transitions. The HUB is home base; runs always land back there.
 const machine = createStateMachine(GameState.HUB, {
@@ -159,15 +171,8 @@ machine.onChange((next, prev) => {
     pauseSel = 0;
     pauseMode = "menu";
   }
+  if (next === GameState.PLAYING) padWarning = false; // resumed — banner done
 });
-
-const HINTS = {
-  [GameState.PLAYING]: "WASD / Arrows: move      P / Esc: pause      K: die",
-  [GameState.PAUSED]: "P / Esc: resume      M: quit to menu",
-  [GameState.LEVELUP]: "Press 1 · 2 · 3 to choose",
-  [GameState.EVOLUTION]: "Enter: wield your evolved weapon",
-  [GameState.GAMEOVER]: "Enter: back to menu",
-};
 
 // Start a run with the currently selected character: resolve its persisted-level
 // stats into the run player, reset the run systems, then enter PLAYING.
@@ -266,6 +271,7 @@ function restartRun() {
 // Open the upgrade draft for a queued level-up.
 function openLevelUp() {
   upgradeOptions = rollUpgrades(weapons, player, currentChar, 3);
+  levelUpSel = 0;
   fx.onLevelUp(player);
   machine.transition(GameState.LEVELUP);
 }
@@ -294,6 +300,7 @@ function pickUpgrade(index) {
 
   if (xp.pendingLevelUps > 0) {
     upgradeOptions = rollUpgrades(weapons, player, currentChar, 3); // stay in LEVELUP
+    levelUpSel = 0;
   } else {
     machine.transition(GameState.PLAYING);
   }
@@ -368,71 +375,103 @@ function endRun() {
 let elapsed = 0; // total loop uptime (s) — proves the loop ticks
 let runTime = 0; // time in the current run (s)
 
+// Activate the currently selected hub option (shared by confirm + tap).
+function activateHubOption() {
+  const dest = HUB_OPTIONS[hubSel].id;
+  if (dest === "collection") {
+    collectionSel = 0;
+    machine.transition(GameState.COLLECTION);
+  } else if (dest === "shop") {
+    shopSel = 0;
+    shopMessage = null;
+    machine.transition(GameState.SHOP);
+  } else if (dest === "fusion") {
+    fusionSel = 0;
+    fusionMode = "browse";
+    machine.transition(GameState.FUSION);
+  } else if (dest === "achievements") {
+    achievementsScroll = 0;
+    machine.transition(GameState.ACHIEVEMENTS);
+  } else if (dest === "reset") {
+    confirmReset = true;
+  } else {
+    // "play" and "roster" both open the character roster; from there Play
+    // continues into equip/run, Roster is for browsing.
+    machine.transition(GameState.MENU);
+  }
+}
+
+function activatePauseOption() {
+  const action = PAUSE_OPTIONS[pauseSel].id;
+  if (action === "resume") machine.transition(GameState.PLAYING);
+  else if (action === "restart") restartRun();
+  else if (action === "settings") pauseMode = "settings";
+  else if (action === "quit") machine.transition(GameState.HUB);
+}
+
+function adjustVolume(step) {
+  save.settings.masterVolume =
+    Math.round(Math.min(1, Math.max(0, (save.settings.masterVolume ?? 1) + step)) * 10) / 10;
+  writeSave(save);
+  fx.setVolume(save.settings.masterVolume);
+}
+
+// All flow input is ACTIONS (pressed(...)) plus taps hit-tested against the
+// regions the previous frame's render registered. Tap ids follow a convention:
+// "sel:N" selects (and, where safe, activates) item N; "back"/"confirm"/named
+// ids mirror their action counterparts.
 function handleTransitions() {
+  const tap = consumeTap();
+  const tapId = tap ? hitRegion(tap.x, tap.y) : null;
+  const tapSel = tapId && tapId.startsWith("sel:") ? Number(tapId.slice(4)) : null;
+
   switch (machine.current) {
     case GameState.HUB:
       if (confirmReset) {
         // Destructive action — explicit confirmation gate.
-        if (wasPressed("Enter")) {
+        if (pressed("confirm") || tapId === "confirm") {
           resetSave(save);
           selectedIndex = 0;
           hubSel = 0;
           confirmReset = false;
-        } else if (wasPressed("Escape")) {
+        } else if (pressed("cancel") || tapId === "back") {
           confirmReset = false;
         }
-      } else if (wasPressed("ArrowUp") || wasPressed("KeyW"))
+      } else if (pressed("navUp"))
         hubSel = (hubSel + HUB_OPTIONS.length - 1) % HUB_OPTIONS.length;
-      else if (wasPressed("ArrowDown") || wasPressed("KeyS"))
+      else if (pressed("navDown"))
         hubSel = (hubSel + 1) % HUB_OPTIONS.length;
-      else if (wasPressed("Enter") || wasPressed("Space")) {
-        const dest = HUB_OPTIONS[hubSel].id;
-        if (dest === "collection") {
-          collectionSel = 0;
-          machine.transition(GameState.COLLECTION);
-        } else if (dest === "shop") {
-          shopSel = 0;
-          shopMessage = null;
-          machine.transition(GameState.SHOP);
-        } else if (dest === "fusion") {
-          fusionSel = 0;
-          fusionMode = "browse";
-          machine.transition(GameState.FUSION);
-        } else if (dest === "achievements") {
-          achievementsScroll = 0;
-          machine.transition(GameState.ACHIEVEMENTS);
-        } else if (dest === "reset") {
-          confirmReset = true;
-        } else {
-          // "play" and "roster" both open the character roster; from there Play
-          // continues into equip/run, Roster is for browsing.
-          machine.transition(GameState.MENU);
-        }
-      }
+      else if (tapSel !== null) {
+        hubSel = tapSel; // hub rows are safe to tap-activate directly
+        activateHubOption();
+      } else if (pressed("confirm")) activateHubOption();
       break;
+
     case GameState.SHOP:
-      if (wasPressed("Escape")) machine.transition(GameState.HUB);
-      else if (wasPressed("ArrowUp") || wasPressed("KeyW"))
+      if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
+      else if (pressed("navUp"))
         shopSel = (shopSel + SHOP_UPGRADES.length - 1) % SHOP_UPGRADES.length;
-      else if (wasPressed("ArrowDown") || wasPressed("KeyS"))
+      else if (pressed("navDown"))
         shopSel = (shopSel + 1) % SHOP_UPGRADES.length;
-      else if (wasPressed("Enter") || wasPressed("Space")) {
+      else if (pressed("confirm") || (tapSel !== null && tapSel === shopSel)) {
+        // Spends gold — taps must select first, then tap again to buy.
         const u = SHOP_UPGRADES[shopSel];
         const r = buyUpgrade(save, u.id);
         if (r.ok) writeSave(save);
         shopMessage = { ok: r.ok, text: r.ok ? `${u.name} upgraded!` : r.reason };
-      }
+      } else if (tapSel !== null) shopSel = tapSel;
       break;
+
     case GameState.FUSION: {
       const stacks = getOwnedTools(save);
       if (fusionMode === "reveal") {
-        if (wasPressed("Enter") || wasPressed("Space") || wasPressed("Escape")) {
+        if (pressed("confirm") || pressed("cancel") || tapId === "confirm") {
           fusionMode = "browse";
           if (fusionSel >= stacks.length) fusionSel = Math.max(0, stacks.length - 1);
         }
       } else if (fusionMode === "confirm") {
-        if (wasPressed("Escape")) fusionMode = "browse";
-        else if (wasPressed("Enter") || wasPressed("Space")) {
+        if (pressed("cancel") || tapId === "back") fusionMode = "browse";
+        else if (pressed("confirm") || tapId === "confirm") {
           const t = stacks[fusionSel];
           const r = t ? fuse(save, t.baseId, t.rarity) : { ok: false };
           if (r.ok) {
@@ -448,129 +487,159 @@ function handleTransitions() {
           }
         }
       } else {
-        if (wasPressed("Escape")) machine.transition(GameState.HUB);
-        else if (wasPressed("Enter") || wasPressed("Space")) {
+        const openConfirm = () => {
           const t = stacks[fusionSel];
           if (t && fusionInfo(save, t.baseId, t.rarity).fusable) fusionMode = "confirm";
+        };
+        if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
+        else if (pressed("confirm")) openConfirm();
+        else if (tapSel !== null) {
+          if (tapSel === fusionSel) openConfirm(); // second tap = act
+          else fusionSel = tapSel;
         } else {
-          for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"])
-            if (wasPressed(code)) fusionSel = moveGrid(fusionSel, stacks.length, FUSION_COLS, code);
+          for (const [action, code] of NAV_CODES)
+            if (pressed(action)) fusionSel = moveGrid(fusionSel, stacks.length, fusionCols(view.width), code);
         }
         if (fusionSel >= stacks.length) fusionSel = Math.max(0, stacks.length - 1);
       }
       break;
     }
+
     case GameState.MENU:
-      if (wasPressed("ArrowLeft") || wasPressed("KeyA"))
+      if (pressed("navLeft"))
         selectedIndex = (selectedIndex + CHARACTERS_LIST.length - 1) % CHARACTERS_LIST.length;
-      else if (wasPressed("ArrowRight") || wasPressed("KeyD"))
+      else if (pressed("navRight"))
         selectedIndex = (selectedIndex + 1) % CHARACTERS_LIST.length;
-      else if (wasPressed("KeyE")) {
+      else if (pressed("equip") || tapId === "equip") {
         // Equipping is only meaningful for unlocked characters.
         if (isCharacterUnlocked(save, CHARACTERS_LIST[selectedIndex].id)) {
           equipSel = 0;
           machine.transition(GameState.EQUIP);
         }
-      } else if (wasPressed("Escape")) machine.transition(GameState.HUB);
-      else if (wasPressed("Enter") || wasPressed("Space")) startRun(); // no-op on locked cards
+      } else if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
+      else if (pressed("confirm") || tapId === "start") startRun(); // no-op on locked cards
+      else if (tapSel !== null) {
+        if (tapSel === selectedIndex) startRun(); // second tap = start
+        else selectedIndex = tapSel;
+      }
       break;
+
     case GameState.ACHIEVEMENTS: {
-      if (wasPressed("Escape")) machine.transition(GameState.HUB);
-      else if (wasPressed("ArrowUp") || wasPressed("KeyW"))
+      const maxScroll = Math.max(0, achievementRows(save).length - 6);
+      if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
+      else if (pressed("navUp") || tapId === "scrollUp")
         achievementsScroll = Math.max(0, achievementsScroll - 1);
-      else if (wasPressed("ArrowDown") || wasPressed("KeyS"))
-        achievementsScroll = Math.min(Math.max(0, achievementRows(save).length - 6), achievementsScroll + 1);
+      else if (pressed("navDown") || tapId === "scrollDown")
+        achievementsScroll = Math.min(maxScroll, achievementsScroll + 1);
       break;
     }
+
     case GameState.COLLECTION: {
       const { list } = collectionTools();
-      if (wasPressed("KeyF")) {
+      if (pressed("filterCat") || tapId === "filterCat") {
         collectionCatIdx = (collectionCatIdx + 1) % (TOOL_CATEGORIES.length + 1);
         collectionSel = 0;
-      } else if (wasPressed("KeyR")) {
+      } else if (pressed("filterRar") || tapId === "filterRar") {
         collectionRarIdx = (collectionRarIdx + 1) % (RARITY_ORDER.length + 1);
         collectionSel = 0;
-      } else if (wasPressed("Escape") || wasPressed("KeyC")) {
+      } else if (pressed("cancel") || pressed("tryChar") || tapId === "back") {
         machine.transition(GameState.HUB);
+      } else if (tapSel !== null) {
+        collectionSel = tapSel;
       } else {
-        for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"])
-          if (wasPressed(code)) collectionSel = moveGrid(collectionSel, list.length, COLLECTION_COLS, code);
+        for (const [action, code] of NAV_CODES)
+          if (pressed(action)) collectionSel = moveGrid(collectionSel, list.length, collectionCols(view.width), code);
       }
       if (collectionSel >= list.length) collectionSel = Math.max(0, list.length - 1);
       break;
     }
+
     case GameState.EQUIP: {
       const owned = getOwnedTools(save);
       const charDef = CHARACTERS_LIST[selectedIndex];
-      if (wasPressed("Escape") || wasPressed("KeyE")) {
-        machine.transition(GameState.MENU);
-      } else if (wasPressed("Enter") || wasPressed("Space")) {
+      const equipSelected = () => {
         const tool = owned[equipSel];
-        if (tool) {
-          const r = equipTool(save, charDef.id, tool); // enforces the spec rule
-          if (r.ok) writeSave(save);
-        }
-      } else if (wasPressed("KeyX") || wasPressed("Delete")) {
+        if (!tool) return;
+        const r = equipTool(save, charDef.id, tool); // enforces the spec rule
+        if (r.ok) writeSave(save);
+      };
+      const unequipSelected = () => {
         const tool = owned[equipSel];
         if (tool && isEquipped(save, charDef.id, tool.id)) {
           unequipTool(save, charDef.id, tool.id);
           writeSave(save);
         }
+      };
+      if (pressed("cancel") || pressed("equip") || tapId === "back") {
+        machine.transition(GameState.MENU);
+      } else if (pressed("confirm")) equipSelected();
+      else if (pressed("remove")) unequipSelected();
+      else if (tapSel !== null) {
+        if (tapSel === equipSel) {
+          // Second tap toggles: equipped → unequip, otherwise equip.
+          const tool = owned[equipSel];
+          if (tool && isEquipped(save, charDef.id, tool.id)) unequipSelected();
+          else equipSelected();
+        } else equipSel = tapSel;
       } else {
-        for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"])
-          if (wasPressed(code)) equipSel = moveGrid(equipSel, owned.length, EQUIP_COLS, code);
+        for (const [action, code] of NAV_CODES)
+          if (pressed(action)) equipSel = moveGrid(equipSel, owned.length, equipCols(view.width), code);
       }
       if (equipSel >= owned.length) equipSel = Math.max(0, owned.length - 1);
       break;
     }
+
     case GameState.PLAYING:
-      if (wasPressed("KeyP") || wasPressed("Escape"))
-        machine.transition(GameState.PAUSED);
-      else if (wasPressed("KeyK")) endRun(); // debug: instant death
+      if (pressed("pause") || tapId === "pause") machine.transition(GameState.PAUSED);
+      else if (pressed("debugDie")) endRun(); // debug: instant death
       break;
+
     case GameState.PAUSED:
       if (pauseMode === "settings") {
-        if (wasPressed("Escape")) pauseMode = "menu";
-        else if (wasPressed("ArrowLeft") || wasPressed("ArrowRight")) {
-          const step = wasPressed("ArrowLeft") ? -0.1 : 0.1;
-          save.settings.masterVolume = Math.round(
-            Math.min(1, Math.max(0, (save.settings.masterVolume ?? 1) + step)) * 10
-          ) / 10;
-          writeSave(save);
-          fx.setVolume(save.settings.masterVolume);
-        }
-      } else if (wasPressed("KeyP") || wasPressed("Escape")) {
+        if (pressed("cancel") || tapId === "back") pauseMode = "menu";
+        else if (pressed("navLeft") || tapId === "volDown") adjustVolume(-0.1);
+        else if (pressed("navRight") || tapId === "volUp") adjustVolume(0.1);
+      } else if (pressed("pause")) {
         machine.transition(GameState.PLAYING);
-      } else if (wasPressed("ArrowUp") || wasPressed("KeyW")) {
+      } else if (pressed("navUp")) {
         pauseSel = (pauseSel + PAUSE_OPTIONS.length - 1) % PAUSE_OPTIONS.length;
-      } else if (wasPressed("ArrowDown") || wasPressed("KeyS")) {
+      } else if (pressed("navDown")) {
         pauseSel = (pauseSel + 1) % PAUSE_OPTIONS.length;
-      } else if (wasPressed("Enter") || wasPressed("Space")) {
-        const action = PAUSE_OPTIONS[pauseSel].id;
-        if (action === "resume") machine.transition(GameState.PLAYING);
-        else if (action === "restart") restartRun();
-        else if (action === "settings") pauseMode = "settings";
-        else if (action === "quit") machine.transition(GameState.HUB);
+      } else if (tapSel !== null) {
+        pauseSel = tapSel; // pause rows are safe to tap-activate directly
+        activatePauseOption();
+      } else if (pressed("confirm")) activatePauseOption();
+      break;
+
+    case GameState.LEVELUP: {
+      const n = upgradeOptions.length;
+      if (pressed("choice1")) pickUpgrade(0);
+      else if (pressed("choice2")) pickUpgrade(1);
+      else if (pressed("choice3")) pickUpgrade(2);
+      else if (tapId && tapId.startsWith("pick:")) pickUpgrade(Number(tapId.slice(5)));
+      else if (n > 0) {
+        // Stick/d-pad navigation with a visible cursor + confirm.
+        if (pressed("navLeft") || pressed("navUp")) levelUpSel = (levelUpSel + n - 1) % n;
+        else if (pressed("navRight") || pressed("navDown")) levelUpSel = (levelUpSel + 1) % n;
+        else if (pressed("confirm")) pickUpgrade(levelUpSel);
       }
       break;
-    case GameState.LEVELUP:
-      if (wasPressed("Digit1") || wasPressed("Numpad1")) pickUpgrade(0);
-      else if (wasPressed("Digit2") || wasPressed("Numpad2")) pickUpgrade(1);
-      else if (wasPressed("Digit3") || wasPressed("Numpad3")) pickUpgrade(2);
-      break;
+    }
+
     case GameState.EVOLUTION:
       // Let the reveal land before accepting the dismiss.
       if (
         (performance.now() - evolutionRevealAt) / 1000 > EVOLUTION_DISMISS_DELAY &&
-        (wasPressed("Enter") || wasPressed("Space"))
+        (pressed("confirm") || tapId === "confirm")
       ) {
         evolutionReveal = null;
         machine.transition(GameState.PLAYING);
       }
       break;
+
     case GameState.GAMEOVER:
-      if (wasPressed("Enter")) machine.transition(GameState.HUB);
-      else if (wasPressed("KeyC") && results.unlockedCharacter) {
+      if (pressed("confirm") || tapId === "continue") machine.transition(GameState.HUB);
+      else if ((pressed("tryChar") || tapId === "tryChar") && results.unlockedCharacter) {
         // Shortcut: jump straight to the freshly unlocked specialist.
         const idx = CHARACTERS_LIST.findIndex((c) => c.id === results.unlockedCharacter.id);
         if (idx !== -1) selectedIndex = idx;
@@ -580,11 +649,29 @@ function handleTransitions() {
   }
 }
 
+// nav action → the direction code moveGrid understands.
+const NAV_CODES = [
+  ["navLeft", "ArrowLeft"],
+  ["navRight", "ArrowRight"],
+  ["navUp", "ArrowUp"],
+  ["navDown", "ArrowDown"],
+];
+
 function update(dt) {
   elapsed += dt;
 
+  updateInput(dt); // poll the gamepad backend (buttons + stick nav)
+  // Lower-left touches steer the run; everywhere else they're taps.
+  setTouchJoystickEnabled(machine.current === GameState.PLAYING);
+
+  // The active controller dropped mid-run: pause and explain (overlay banner).
+  if (padDisconnected() && machine.current === GameState.PLAYING) {
+    padWarning = true;
+    machine.transition(GameState.PAUSED);
+  }
+
   // Global: toggle the diagnostics overlay.
-  if (wasPressed("F3")) showDebug = !showDebug;
+  if (pressed("debugToggle")) showDebug = !showDebug;
 
   fx.update(dt); // particles/shake/flash decay even while paused screens show
   toasts.update(dt); // unlock banners tick in every state
@@ -673,17 +760,21 @@ function render() {
   lastRenderMs = now;
   if (frameMs > 0) fps = fps * 0.9 + (1000 / frameMs) * 0.1;
 
+  // Tap targets are re-registered by whatever this frame draws.
+  clearRegions();
+
   switch (machine.current) {
     case GameState.PLAYING:
       renderWorld();
       drawHud(ctx, view, hudData());
+      drawTouchControls(ctx, view); // joystick + pause button (touch only)
       if (showDebug) renderOverlay();
       break;
 
     case GameState.LEVELUP:
       renderWorld();
       drawHud(ctx, view, hudData());
-      drawUpgradeScreen(ctx, view, upgradeOptions);
+      drawUpgradeScreen(ctx, view, upgradeOptions, levelUpSel);
       break;
 
     case GameState.EVOLUTION:
@@ -697,10 +788,13 @@ function render() {
       renderWorld();
       if (pauseMode === "settings") drawSettings(ctx, view, save.settings);
       else
-        drawPauseMenu(ctx, view, pauseSel, {
-          weapons: weapons.list,
-          passives: player.passiveItems,
-        });
+        drawPauseMenu(
+          ctx,
+          view,
+          pauseSel,
+          { weapons: weapons.list, passives: player.passiveItems },
+          padWarning
+        );
       break;
 
     case GameState.GAMEOVER:

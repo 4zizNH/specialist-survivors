@@ -1,6 +1,10 @@
 // ui/hubScreen.js
-// The main-menu hub: title, gold + profile summary, and the three destinations
-// (Play, Collection, Roster). Drawn in SCREEN space; navigation in main.js.
+// The main-menu hub: title, gold + profile summary, and the destinations.
+// Drawn in SCREEN space; navigation in main.js. Rows register tap regions
+// ("sel:N") and the footer hint adapts to the active input device.
+
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine } from "./inputHints.js";
 
 export const HUB_OPTIONS = [
   { id: "play", label: "PLAY", desc: "Pick a specialist, equip a tool, enter the arena" },
@@ -48,8 +52,9 @@ export function drawHub(ctx, view, { save, selectedIndex }) {
     ctx.fillText(`“${title}”`, w / 2, h * 0.2 + 102);
   }
 
-  // Menu options (sized so the 7 rows fit above the footer hint).
-  const optW = 420;
+  // Menu options (sized so the 7 rows fit above the footer hint, and never
+  // wider than a phone viewport).
+  const optW = Math.min(420, w - 32);
   const optH = 52;
   const gap = 11;
   let y = h * 0.37;
@@ -57,6 +62,7 @@ export function drawHub(ctx, view, { save, selectedIndex }) {
     const opt = HUB_OPTIONS[i];
     const selected = i === selectedIndex;
     const x = w / 2 - optW / 2;
+    addRegion(`sel:${i}`, x, y, optW, optH);
 
     roundRect(ctx, x, y, optW, optH, 10);
     ctx.fillStyle = selected ? "rgba(40, 40, 58, 0.98)" : "rgba(18, 18, 26, 0.9)";
@@ -86,7 +92,11 @@ export function drawHub(ctx, view, { save, selectedIndex }) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("↑ ↓ select      Enter confirm", w / 2, h - 24);
+  ctx.fillText(
+    hintLine("↑ ↓ select      Enter confirm", "▲ ▼ select      Ⓐ confirm", "tap an option"),
+    w / 2,
+    h - 24
+  );
 }
 
 // Destructive-action confirmation, drawn over the hub.
@@ -115,9 +125,26 @@ export function drawResetConfirm(ctx, view) {
   ctx.fillStyle = "#c0c0d0";
   ctx.font = "14px system-ui, sans-serif";
   ctx.fillText("Characters, tools, gold, and shop upgrades will be wiped.", w / 2, y + 78);
-  ctx.fillStyle = "#9a9ab0";
-  ctx.font = "700 15px ui-monospace, monospace";
-  ctx.fillText("Enter: yes, wipe it      Esc: cancel", w / 2, y + 124);
+
+  // Two real buttons (44px+ targets) — tappable, and labeled per input device.
+  drawDialogButton(ctx, w / 2 - 115, y + 104, 110, 44, hintLine("Enter: wipe it", "Ⓐ wipe it", "Wipe it"), "#ff5a5a", "confirm");
+  drawDialogButton(ctx, w / 2 + 5, y + 104, 110, 44, hintLine("Esc: cancel", "Ⓑ cancel", "Cancel"), "#9a9ab0", "back");
+}
+
+// Shared dialog button: rounded, labeled, registered as a tap region.
+export function drawDialogButton(ctx, x, y, w, h, label, color, regionId) {
+  roundRect(ctx, x, y, w, h, 9);
+  ctx.fillStyle = "rgba(18, 18, 26, 0.95)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = "700 13px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+  addRegion(regionId, x - 4, y - 4, w + 8, h + 8);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

@@ -6,6 +6,9 @@
 //
 // reveal = { fromName, toName, desc, color, passiveName }; t = seconds elapsed.
 
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine } from "./inputHints.js";
+
 export const EVOLUTION_DISMISS_DELAY = 0.9; // s before Enter is accepted
 
 export function drawEvolutionScreen(ctx, view, reveal, t) {
@@ -16,6 +19,7 @@ export function drawEvolutionScreen(ctx, view, reveal, t) {
 
   ctx.fillStyle = "rgba(6, 4, 2, 0.88)";
   ctx.fillRect(0, 0, w, h);
+  addRegion("confirm", 0, 0, w, h); // tap anywhere claims the weapon (delay-gated in main)
 
   const color = reveal.color || "#ffd34d";
   const ease = Math.min(1, t / 0.6); // 0→1 entrance
@@ -96,7 +100,12 @@ export function drawEvolutionScreen(ctx, view, reveal, t) {
     ctx.fillStyle = "#e8e8f0";
     ctx.font = "600 15px system-ui, sans-serif";
     const blink = Math.floor(t * 2) % 2 === 0;
-    if (blink) ctx.fillText("Press Enter to wield it", cx, h - 70);
+    if (blink)
+      ctx.fillText(
+        hintLine("Press Enter to wield it", "Press Ⓐ to wield it", "Tap to wield it"),
+        cx,
+        h - 70
+      );
   }
 }
 

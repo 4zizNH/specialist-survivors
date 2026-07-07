@@ -1,6 +1,10 @@
 // ui/upgradeScreen.js
 // The level-up draft, drawn in SCREEN space over a dimmed, frozen world. Shows
-// up to 3 option cards; the player presses 1 / 2 / 3 to choose (handled in main).
+// up to 3 option cards; pick via 1/2/3, stick/d-pad + Ⓐ (a focus ring marks
+// the cursor), or tap. Cards stack vertically on narrow (phone) screens.
+
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine } from "./inputHints.js";
 
 const KIND_COLOR = {
   new: "#5ad1ff",
@@ -15,24 +19,50 @@ const KIND_LABEL = {
   passive: "PASSIVE ITEM",
 };
 
-export function drawUpgradeScreen(ctx, view, options) {
+export function drawUpgradeScreen(ctx, view, options, selectedIndex = 0) {
   const w = view.width;
   const h = view.height;
+  const stacked = w < 700; // phone portrait: cards stack vertically
 
   ctx.fillStyle = "rgba(6, 6, 12, 0.82)";
   ctx.fillRect(0, 0, w, h);
 
+  const titleY = stacked ? 64 : h / 2 - 165;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#e8e8f0";
-  ctx.font = "700 38px system-ui, sans-serif";
-  ctx.fillText("LEVEL UP", w / 2, h / 2 - 165);
+  ctx.font = `700 ${stacked ? 30 : 38}px system-ui, sans-serif`;
+  ctx.fillText("LEVEL UP", w / 2, titleY);
   ctx.fillStyle = "#9a9ab0";
   ctx.font = "15px system-ui, sans-serif";
-  ctx.fillText("Choose an upgrade — press  1 · 2 · 3", w / 2, h / 2 - 132);
+  ctx.fillText(
+    hintLine(
+      "Choose an upgrade — press  1 · 2 · 3",
+      "◀ ▶ choose      Ⓐ confirm",
+      "tap an upgrade to take it"
+    ),
+    w / 2,
+    titleY + (stacked ? 28 : 33)
+  );
 
   const n = options.length;
   if (n === 0) return;
+
+  if (stacked) {
+    // Vertical, full-width cards — big tap targets on small screens.
+    const cardW = Math.min(420, w - 32);
+    const gap = 14;
+    const top = titleY + 52;
+    const cardH = Math.min(190, (h - top - 24 - (n - 1) * gap) / n);
+    let y = top;
+    for (let i = 0; i < n; i++) {
+      addRegion(`pick:${i}`, w / 2 - cardW / 2, y, cardW, cardH);
+      drawCard(ctx, w / 2 - cardW / 2, y, cardW, cardH, i + 1, options[i], i === selectedIndex);
+      y += cardH + gap;
+    }
+    return;
+  }
+
   const cardH = 210;
   const gap = 24;
   const cardW = Math.min(300, (w - 80 - (n - 1) * gap) / n);
@@ -41,13 +71,22 @@ export function drawUpgradeScreen(ctx, view, options) {
   const y = h / 2 - cardH / 2 + 14;
 
   for (let i = 0; i < n; i++) {
-    drawCard(ctx, x, y, cardW, cardH, i + 1, options[i]);
+    addRegion(`pick:${i}`, x, y, cardW, cardH);
+    drawCard(ctx, x, y, cardW, cardH, i + 1, options[i], i === selectedIndex);
     x += cardW + gap;
   }
 }
 
-function drawCard(ctx, x, y, cw, ch, num, opt) {
+function drawCard(ctx, x, y, cw, ch, num, opt, focused) {
   const accent = KIND_COLOR[opt.kind] ?? "#ffffff";
+
+  // Focus ring: the stick/keyboard cursor is always visible.
+  if (focused) {
+    roundRect(ctx, x - 5, y - 5, cw + 10, ch + 10, 15);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.stroke();
+  }
 
   // Panel.
   roundRect(ctx, x, y, cw, ch, 12);

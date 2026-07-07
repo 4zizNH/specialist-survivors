@@ -3,6 +3,8 @@
 // SCREEN space; navigation lives in main.js.
 
 import { SHOP_UPGRADES, getShopLevel } from "../data/shop.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, drawBackChip } from "./inputHints.js";
 
 export function drawShop(ctx, view, { save, selectedIndex, message }) {
   const w = view.width;
@@ -36,6 +38,7 @@ export function drawShop(ctx, view, { save, selectedIndex, message }) {
     const affordable = !maxed && save.currency.gold >= price;
     const selected = i === selectedIndex;
 
+    addRegion(`sel:${i}`, x, y, rowW, rowH);
     roundRect(ctx, x, y, rowW, rowH, 10);
     ctx.fillStyle = selected ? "rgba(38, 38, 54, 0.98)" : "rgba(18, 18, 26, 0.92)";
     ctx.fill();
@@ -92,7 +95,16 @@ export function drawShop(ctx, view, { save, selectedIndex, message }) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("↑ ↓ select      Enter buy      Esc back", w / 2, h - 24);
+  ctx.fillText(
+    hintLine(
+      "↑ ↓ select      Enter buy      Esc back",
+      "▲ ▼ select      Ⓐ buy      Ⓑ back",
+      "tap to select · tap again to buy"
+    ),
+    w / 2,
+    h - 24
+  );
+  drawBackChip(ctx, view);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

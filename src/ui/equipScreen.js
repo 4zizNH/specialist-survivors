@@ -7,8 +7,13 @@
 import { drawToolCard, drawToolDetailPanel } from "./toolCard.js";
 import { SPECIALIZATIONS } from "../data/characters.js";
 import { canEquip, equipReason } from "../meta/inventory.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, drawBackChip } from "./inputHints.js";
 
-export const EQUIP_COLS = 4;
+// Grid columns shrink on narrow screens so cards stay readable/tappable.
+export function equipCols(viewWidth) {
+  return viewWidth < 700 ? 2 : 4;
+}
 
 export function drawEquip(ctx, view, { character, level, tools, selectedIndex, loadout, slots = 1 }) {
   const w = view.width;
@@ -64,8 +69,8 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
   );
 
   // --- Grid of owned tools ---
-  const cols = EQUIP_COLS;
-  const marginX = 40;
+  const cols = equipCols(w);
+  const marginX = Math.min(40, w * 0.04);
   const gap = 16;
   const cardW = (w - marginX * 2 - gap * (cols - 1)) / cols;
   const cardH = 104;
@@ -81,6 +86,7 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
     const y = top + row * (cardH + gap);
     if (y + cardH > detailTop - 10) break;
     const compatible = canEquip(character, tool);
+    addRegion(`sel:${i}`, x, y, cardW, cardH);
     drawToolCard(ctx, x, y, cardW, cardH, tool, {
       selected: i === selectedIndex,
       dimmed: !compatible,
@@ -97,8 +103,13 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
   ctx.fillText(
-    "← → ↑ ↓ select      Enter equip      X unequip      Esc back",
+    hintLine(
+      "← → ↑ ↓ select      Enter equip      X unequip      Esc back",
+      "✚ select      Ⓐ equip      Ⓨ unequip      Ⓑ back",
+      "tap to select · tap again to equip/unequip"
+    ),
     w / 2,
     h - 16
   );
+  drawBackChip(ctx, view);
 }

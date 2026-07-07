@@ -106,8 +106,9 @@ export function drawToolCard(ctx, x, y, w, h, tool, opts = {}) {
 // discovered evolutions read as lore entries, undiscovered ones as "???".
 export function drawToolDetailPanel(ctx, view, tool, top, height = 118, evolutionsSeen = null) {
   const w = view.width;
-  const x = 40;
-  const width = w - 80;
+  const compact = w < 700; // phone portrait: fewer columns, no right-side extras
+  const x = compact ? 12 : 40;
+  const width = w - x * 2;
 
   roundRect(ctx, x, top, width, height, 10);
   ctx.fillStyle = "rgba(18, 18, 26, 0.95)";
@@ -137,6 +138,25 @@ export function drawToolDetailPanel(ctx, view, tool, top, height = 118, evolutio
     x + 18 + ctx.measureText(rar.label.toUpperCase() + " ").width + 6,
     top + 50
   );
+
+  const evo = evolutionsSeen ? EVOLUTIONS[tool.baseId] : null;
+  const evoSeen = evo && evolutionsSeen.includes(tool.baseId);
+
+  if (compact) {
+    // Compact: one dense stat line + one evolution line; skip the extras.
+    ctx.font = "12px ui-monospace, monospace";
+    ctx.fillStyle = "#cfcfe0";
+    ctx.fillText(
+      `DMG ${s.damage}  CD ${s.cooldown}s  AR ${s.area}  ×${s.count}  P ${s.pierce < 0 ? "∞" : s.pierce}`,
+      x + 18,
+      top + 74
+    );
+    if (evo) {
+      ctx.fillStyle = evoSeen ? "#ffd34d" : "#7a7a8c";
+      ctx.fillText(`⚡ Evolution: ${evoSeen ? evo.evolvedName : "???"}`, x + 18, top + 96);
+    }
+    return;
+  }
 
   // Effective stats (base × rarity).
   ctx.font = "13px ui-monospace, monospace";
@@ -174,23 +194,19 @@ export function drawToolDetailPanel(ctx, view, tool, top, height = 118, evolutio
 
   // Evolution recipe entry (right side). Discovered in a past run → full lore;
   // otherwise a "???" hint at what's waiting.
-  if (evolutionsSeen) {
-    const evo = EVOLUTIONS[tool.baseId];
-    if (evo) {
-      const seen = evolutionsSeen.includes(tool.baseId);
-      ctx.textAlign = "right";
-      if (seen) {
-        ctx.fillStyle = "#ffd34d";
-        ctx.fillText(`⚡ Evolution: ${evo.evolvedName}`, x + width - 18, top + 50);
-        ctx.fillStyle = "#9a9ab0";
-        const pas = PASSIVES[evo.requiresPassiveId]?.name ?? evo.requiresPassiveId;
-        ctx.fillText(`max level + ${pas}`, x + width - 18, top + 96);
-      } else {
-        ctx.fillStyle = "#7a7a8c";
-        ctx.fillText("⚡ Evolution: ???", x + width - 18, top + 50);
-        ctx.fillStyle = "#5a5a6c";
-        ctx.fillText("max it in a run holding the right passive…", x + width - 18, top + 96);
-      }
+  if (evo) {
+    ctx.textAlign = "right";
+    if (evoSeen) {
+      ctx.fillStyle = "#ffd34d";
+      ctx.fillText(`⚡ Evolution: ${evo.evolvedName}`, x + width - 18, top + 50);
+      ctx.fillStyle = "#9a9ab0";
+      const pas = PASSIVES[evo.requiresPassiveId]?.name ?? evo.requiresPassiveId;
+      ctx.fillText(`max level + ${pas}`, x + width - 18, top + 96);
+    } else {
+      ctx.fillStyle = "#7a7a8c";
+      ctx.fillText("⚡ Evolution: ???", x + width - 18, top + 50);
+      ctx.fillStyle = "#5a5a6c";
+      ctx.fillText("max it in a run holding the right passive…", x + width - 18, top + 96);
     }
   }
 }

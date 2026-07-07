@@ -9,8 +9,14 @@ import { RARITIES } from "../data/rarities.js";
 import { resolveToolWeaponDef, makeTool } from "../data/tools.js";
 import { fusionInfo } from "../meta/fusion.js";
 import { CHARACTERS_BY_ID } from "../data/characters.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, drawBackChip } from "./inputHints.js";
+import { drawDialogButton } from "./hubScreen.js";
 
-export const FUSION_COLS = 4;
+// Grid columns shrink on narrow screens so cards stay readable/tappable.
+export function fusionCols(viewWidth) {
+  return viewWidth < 700 ? 2 : 4;
+}
 
 export function drawFusion(ctx, view, { save, stacks, selectedIndex, mode, result, revealElapsed }) {
   const w = view.width;
@@ -34,8 +40,8 @@ export function drawFusion(ctx, view, { save, stacks, selectedIndex, mode, resul
   ctx.fillText(`◆ ${save.currency.gold} gold`, w - 40, 62);
 
   // Grid of stacks.
-  const cols = FUSION_COLS;
-  const marginX = 40;
+  const cols = fusionCols(w);
+  const marginX = Math.min(40, w * 0.04);
   const gap = 16;
   const cardW = (w - marginX * 2 - gap * (cols - 1)) / cols;
   const cardH = 104;
@@ -50,6 +56,7 @@ export function drawFusion(ctx, view, { save, stacks, selectedIndex, mode, resul
     const y = top + row * (cardH + gap);
     if (y + cardH > detailTop - 10) break;
     const info = fusionInfo(save, t.baseId, t.rarity);
+    addRegion(`sel:${i}`, x, y, cardW, cardH);
     drawToolCard(ctx, x, y, cardW, cardH, t, {
       selected: i === selectedIndex,
       highlight: info.fusable,
@@ -64,7 +71,16 @@ export function drawFusion(ctx, view, { save, stacks, selectedIndex, mode, resul
   ctx.textAlign = "center";
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("← → ↑ ↓ select      Enter fuse      Esc back", w / 2, h - 16);
+  ctx.fillText(
+    hintLine(
+      "← → ↑ ↓ select      Enter fuse      Esc back",
+      "✚ select      Ⓐ fuse      Ⓑ back",
+      "tap to select · tap again to fuse"
+    ),
+    w / 2,
+    h - 16
+  );
+  drawBackChip(ctx, view);
 
   // Overlays.
   if (mode === "confirm") drawConfirm(ctx, view, save, stacks[selectedIndex]);
@@ -196,9 +212,8 @@ function drawConfirm(ctx, view, save, tool) {
     ctx.fillText(`⚠ This consumes the last copies — ${names} will be unequipped.`, w / 2, ly);
     ly += 28;
   }
-  ctx.fillStyle = "#9a9ab0";
-  ctx.font = "700 15px ui-monospace, monospace";
-  ctx.fillText("Enter: fuse      Esc: cancel", w / 2, ly + 22);
+  drawDialogButton(ctx, w / 2 - 120, ly + 4, 115, 44, hintLine("Enter: fuse", "Ⓐ fuse", "Fuse"), "#5fd66f", "confirm");
+  drawDialogButton(ctx, w / 2 + 5, ly + 4, 115, 44, hintLine("Esc: cancel", "Ⓑ cancel", "Cancel"), "#9a9ab0", "back");
 }
 
 function drawReveal(ctx, view, result, elapsed) {
@@ -230,9 +245,10 @@ function drawReveal(ctx, view, result, elapsed) {
   if (t >= 1) {
     ctx.fillStyle = "#9a9ab0";
     ctx.font = "14px system-ui, sans-serif";
-    ctx.fillText("Press Enter to continue", w / 2, h / 2 + 90);
+    ctx.fillText(hintLine("Press Enter to continue", "Ⓐ continue", "tap to continue"), w / 2, h / 2 + 90);
   }
   ctx.globalAlpha = 1;
+  addRegion("confirm", 0, 0, w, h); // tap anywhere dismisses the reveal
 }
 
 function roundRect(ctx, x, y, w, h, r) {

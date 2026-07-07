@@ -10,10 +10,18 @@
 import { resolveCharacterStats, characterXpToNext } from "../meta/progression.js";
 import { SPECIALIZATIONS } from "../data/characters.js";
 import { formatTime } from "./hud.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, isTouch } from "./inputHints.js";
+
+// Cards are authored at this logical size and uniformly scaled down to fit
+// narrow screens (phone portrait ⇒ 2 columns of shrunken cards).
+const CARD_W = 230;
+const CARD_H = 356;
 
 export function drawCharacterSelect(ctx, view, { characters, progress, selectedIndex, unlockedIds, unlockInfo }) {
   const w = view.width;
   const h = view.height;
+  const compact = w < 760;
 
   ctx.fillStyle = "#0a0a0f";
   ctx.fillRect(0, 0, w, h);
@@ -22,36 +30,78 @@ export function drawCharacterSelect(ctx, view, { characters, progress, selectedI
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#e8e8f0";
-  ctx.font = "700 40px system-ui, sans-serif";
-  ctx.fillText("CHOOSE YOUR SPECIALIST", w / 2, 84);
+  ctx.font = `700 ${compact ? 26 : 40}px system-ui, sans-serif`;
+  ctx.fillText("CHOOSE YOUR SPECIALIST", w / 2, compact ? 60 : 84);
   ctx.fillStyle = "#7a7a8c";
   ctx.font = "15px system-ui, sans-serif";
-  ctx.fillText("← →  select      Enter  start run      E  equip      Esc  hub", w / 2, 112);
+  ctx.fillText(
+    hintLine(
+      "← →  select      Enter  start run      E  equip      Esc  hub",
+      "◀ ▶  select      Ⓐ  start run      Ⓧ  equip      Ⓑ  hub",
+      "tap to select · tap again to start"
+    ),
+    w / 2,
+    compact ? 84 : 112
+  );
 
-  // Grid layout: a single row up to 4 characters, then wrap (6 -> 3×2).
+  // Grid layout: scale the authored card down until rows and columns fit.
   const n = characters.length;
-  const gap = 22;
-  const cols = n <= 4 ? n : Math.ceil(n / 2);
+  const gap = compact ? 12 : 22;
+  const cols = compact ? 2 : n <= 4 ? n : Math.ceil(n / 2);
   const rows = Math.ceil(n / cols);
-  const cardW = Math.min(230, (w - 80 - (cols - 1) * gap) / cols);
-  const cardH = 356;
+  const y0 = compact ? 100 : 136;
+  const bottomLimit = h - (isTouch() ? 126 : 30); // leave room for touch buttons
+  const availW = (w - 32 - (cols - 1) * gap) / cols;
+  const availH = (bottomLimit - y0 - (rows - 1) * gap) / rows;
+  const s = Math.max(0.3, Math.min(1, availW / CARD_W, availH / CARD_H));
+  const cardW = CARD_W * s;
+  const cardH = CARD_H * s;
   const totalW = cols * cardW + (cols - 1) * gap;
   const totalH = rows * cardH + (rows - 1) * gap;
   const x0 = (w - totalW) / 2;
-  const y0 = Math.max(136, h / 2 - totalH / 2 + 24);
+  const yTop = Math.max(y0, y0 + (bottomLimit - y0 - totalH) / 2);
 
   for (let i = 0; i < n; i++) {
     const def = characters[i];
     const prog = progress[def.id] || { level: 1, xp: 0 };
     const x = x0 + (i % cols) * (cardW + gap);
-    const y = y0 + Math.floor(i / cols) * (cardH + gap);
+    const y = yTop + Math.floor(i / cols) * (cardH + gap);
     const locked = unlockedIds ? !unlockedIds.includes(def.id) : false;
+    addRegion(`sel:${i}`, x, y, cardW, cardH);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
     if (locked) {
-      drawLockedCard(ctx, x, y, cardW, cardH, def, i === selectedIndex, unlockInfo?.[def.id]);
+      drawLockedCard(ctx, 0, 0, CARD_W, CARD_H, def, i === selectedIndex, unlockInfo?.[def.id]);
     } else {
-      drawCard(ctx, x, y, cardW, cardH, def, prog, i === selectedIndex);
+      drawCard(ctx, 0, 0, CARD_W, CARD_H, def, prog, i === selectedIndex);
     }
+    ctx.restore();
   }
+
+  // Touch: explicit START / EQUIP buttons (44px+ targets).
+  if (isTouch()) {
+    const sel = characters[selectedIndex];
+    const selUnlocked = !unlockedIds || unlockedIds.includes(sel?.id);
+    drawFooterButton(ctx, w / 2 - 150, h - 108, 180, 48, selUnlocked ? "▶ START RUN" : "🔒 LOCKED", selUnlocked ? "#5fd66f" : "#5a5a6c", "start");
+    drawFooterButton(ctx, w / 2 + 42, h - 108, 108, 48, "EQUIP", selUnlocked ? "#5ac8ff" : "#5a5a6c", "equip");
+  }
+}
+
+function drawFooterButton(ctx, x, y, w, h, label, color, regionId) {
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.fillStyle = "rgba(20, 20, 30, 0.95)";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = "700 16px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
+  addRegion(regionId, x - 4, y - 4, w + 8, h + 8);
 }
 
 // A gated specialist: silhouette + lock + the exact requirement and progress.

@@ -8,6 +8,8 @@ import { formatTime } from "./hud.js";
 import { drawToolCard } from "./toolCard.js";
 import { RARITIES } from "../data/rarities.js";
 import { rewardText } from "../meta/achievements.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine } from "./inputHints.js";
 
 export function drawGameOver(ctx, view, results) {
   const w = view.width;
@@ -145,14 +147,25 @@ export function drawGameOver(ctx, view, results) {
     ctx.fillText(nc.blurb || "", bx + 88, ay + 52);
     ctx.fillStyle = "#5ac8ff";
     ctx.font = "700 13px ui-monospace, monospace";
-    ctx.fillText("Press C to try them now", bx + 88, ay + 71);
+    ctx.fillText(
+      hintLine("Press C to try them now", "Press Ⓨ to try them now", "Tap here to try them now"),
+      bx + 88,
+      ay + 71
+    );
     ctx.textAlign = "center";
+    addRegion("tryChar", bx, ay, bw, bh); // the whole banner is the target
     ay += bh + 10;
   }
 
   ctx.fillStyle = "#7a7a8c";
   ctx.font = "16px system-ui, sans-serif";
-  ctx.fillText("Press Enter to return to the hub", w / 2, h - 30);
+  ctx.fillText(
+    hintLine("Press Enter to return to the hub", "Press Ⓐ to return to the hub", "Tap to return to the hub"),
+    w / 2,
+    h - 30
+  );
+  // Touch: the bottom strip returns to the hub (doesn't overlap the banner).
+  addRegion("continue", 0, h - 64, w, 64);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

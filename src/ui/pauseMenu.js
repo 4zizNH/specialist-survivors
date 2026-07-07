@@ -6,6 +6,8 @@
 
 import { PASSIVES } from "../data/passives.js";
 import { evolutionFor, evolutionStatus } from "../systems/evolution.js";
+import { addRegion } from "../engine/hitRegions.js";
+import { hintLine, drawBackChip } from "./inputHints.js";
 
 export const PAUSE_OPTIONS = [
   { id: "resume", label: "Resume" },
@@ -24,12 +26,12 @@ const KEY_REFERENCE = [
   ["Debug overlay", "F3"],
 ];
 
-export function drawPauseMenu(ctx, view, selectedIndex, build) {
+export function drawPauseMenu(ctx, view, selectedIndex, build, padWarning = false) {
   const w = view.width;
   const h = view.height;
 
   dim(ctx, w, h);
-  if (build) drawBuildPanel(ctx, h, build);
+  if (build && w >= 760) drawBuildPanel(ctx, h, build); // panel needs side room
 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -37,13 +39,21 @@ export function drawPauseMenu(ctx, view, selectedIndex, build) {
   ctx.font = "700 48px system-ui, sans-serif";
   ctx.fillText("PAUSED", w / 2, h * 0.3);
 
-  const optW = 300;
+  // The active controller dropped — that's why we're paused.
+  if (padWarning) {
+    ctx.fillStyle = "#ffb03a";
+    ctx.font = "700 16px system-ui, sans-serif";
+    ctx.fillText("⚠ Controller disconnected — reconnect it or continue another way", w / 2, h * 0.3 + 42);
+  }
+
+  const optW = Math.min(300, w - 48);
   const optH = 48;
   const gap = 14;
   let y = h * 0.42;
   for (let i = 0; i < PAUSE_OPTIONS.length; i++) {
     const selected = i === selectedIndex;
     const x = w / 2 - optW / 2;
+    addRegion(`sel:${i}`, x, y, optW, optH);
     roundRect(ctx, x, y, optW, optH, 9);
     ctx.fillStyle = selected ? "rgba(40, 40, 58, 0.98)" : "rgba(18, 18, 26, 0.92)";
     ctx.fill();
@@ -58,7 +68,15 @@ export function drawPauseMenu(ctx, view, selectedIndex, build) {
 
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("↑ ↓ select      Enter confirm      P / Esc resume", w / 2, y + 18);
+  ctx.fillText(
+    hintLine(
+      "↑ ↓ select      Enter confirm      P / Esc resume",
+      "▲ ▼ select      Ⓐ confirm      Start resume",
+      "tap an option"
+    ),
+    w / 2,
+    y + 18
+  );
 }
 
 export function drawSettings(ctx, view, settings) {
@@ -73,11 +91,13 @@ export function drawSettings(ctx, view, settings) {
   ctx.font = "700 40px system-ui, sans-serif";
   ctx.fillText("SETTINGS", w / 2, h * 0.22);
 
-  // --- Master volume slider ---
+  // --- Master volume slider (with −/+ tap buttons; ←/→ also adjust) ---
   const vol = settings.masterVolume ?? 1;
-  const sliderW = 320;
+  const sliderW = Math.min(320, w - 160);
   const sx = w / 2 - sliderW / 2;
   const sy = h * 0.34;
+  volButton(ctx, sx - 56, sy - 17, "−", "volDown");
+  volButton(ctx, sx + sliderW + 12, sy - 17, "+", "volUp");
   ctx.textAlign = "left";
   ctx.fillStyle = "#cfcfe0";
   ctx.font = "600 16px system-ui, sans-serif";
@@ -125,7 +145,24 @@ export function drawSettings(ctx, view, settings) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
-  ctx.fillText("Esc back", w / 2, ky + 18);
+  ctx.fillText(hintLine("Esc back", "Ⓑ back", "‹ Back"), w / 2, ky + 18);
+  drawBackChip(ctx, view);
+}
+
+// 44px square −/+ button beside the volume slider.
+function volButton(ctx, x, y, glyph, regionId) {
+  roundRect(ctx, x, y, 44, 44, 9);
+  ctx.fillStyle = "rgba(24, 24, 34, 0.92)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.stroke();
+  ctx.fillStyle = "#cfcfe0";
+  ctx.font = "700 24px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(glyph, x + 22, y + 23);
+  addRegion(regionId, x - 4, y - 4, 52, 52);
 }
 
 // Left-side "current build" panel: each weapon's in-run level (MAX in gold, ★

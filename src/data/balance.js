@@ -13,6 +13,16 @@
 // 10:00  THE COLOSSUS — real boss, two phases (enrages below 50% HP)
 // 10:00+ everything keeps scaling toward the population cap (~15:00 plateau)
 
+// ── Input tuning (fed to the engine's input layer by main.js) ────────────────
+export const INPUT = {
+  gamepadDeadZone: 0.22, // stick tilt below this is ignored (movement)
+  stickNavThreshold: 0.55, // stick tilt that registers as a menu-nav press
+  stickNavRepeatDelay: 0.4, // s held before nav starts repeating
+  stickNavRepeatRate: 0.14, // s between repeats while held
+  touchJoystickRadius: 64, // px of drag for full movement speed
+  touchTapMaxDist: 14, // px of drift before a touch stops counting as a tap
+};
+
 // ── Tool fusion (combine duplicates → next rarity) ───────────────────────────
 export const FUSION = {
   // Copies consumed per fusion, keyed by SOURCE rarity.
