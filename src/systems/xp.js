@@ -103,5 +103,9 @@ export function createXpSystem() {
     get gemCount() {
       return pool.activeCount;
     },
+    // Live gems (the headless sim's bot drifts toward the nearest).
+    get gems() {
+      return pool.active;
+    },
   };
 }

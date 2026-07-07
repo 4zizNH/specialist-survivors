@@ -11,6 +11,7 @@ import { createSpatialGrid } from "../engine/spatialgrid.js";
 import { createEnemy } from "../entities/enemy.js";
 import { ENEMIES } from "../data/enemies.js";
 import { getDifficulty, unlockedTypes, BOSS_INTERVAL, BOSS_AT } from "./difficulty.js";
+import { rng } from "../engine/rng.js";
 
 const BULLET_MARGIN = 60; // despawn bullets this far outside the world
 
@@ -44,7 +45,7 @@ export function createSpawner(world, opts = {}) {
 
   function spawnAt(arch, player, view, hpMult, dmgMult, jitter = 0) {
     const ring = Math.hypot(view.width, view.height) / 2 + 50 + arch.radius;
-    const a = Math.random() * Math.PI * 2;
+    const a = rng() * Math.PI * 2;
     const x = clamp(player.x + Math.cos(a) * ring + rnd(jitter), 0, world.width);
     const y = clamp(player.y + Math.sin(a) * ring + rnd(jitter), 0, world.height);
     pool.acquire().reset(arch, x, y, hpMult, dmgMult);
@@ -62,7 +63,7 @@ export function createSpawner(world, opts = {}) {
       while (spawnTimer <= 0) {
         spawnTimer += diff.spawnInterval;
         for (let i = 0; i < diff.spawnBatch && pool.activeCount < diff.maxAlive; i++) {
-          const arch = types[(Math.random() * types.length) | 0];
+          const arch = types[(rng() * types.length) | 0];
           spawnAt(arch, player, view, diff.hpMult, diff.dmgMult);
         }
       }
@@ -245,5 +246,5 @@ function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
 }
 function rnd(r) {
-  return (Math.random() * 2 - 1) * r;
+  return (rng() * 2 - 1) * r;
 }

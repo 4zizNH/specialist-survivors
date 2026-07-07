@@ -16,6 +16,7 @@
 import { TOOL_BASES, makeTool, resolveToolWeaponDef } from "../data/tools.js";
 import { PASSIVE_LIST, MAX_PASSIVES } from "../data/passives.js";
 import { EVOLUTIONS } from "../data/balance.js";
+import { rng } from "../engine/rng.js";
 
 const MAX_WEAPONS = 6;
 
@@ -153,7 +154,7 @@ function round1(v) {
 function sample(arr, n) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
+    const j = (rng() * (i + 1)) | 0;
     const t = a[i];
     a[i] = a[j];
     a[j] = t;

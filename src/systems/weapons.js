@@ -17,6 +17,7 @@ import { createPool } from "../engine/pool.js";
 import { createSpatialGrid } from "../engine/spatialgrid.js";
 import { createProjectile } from "../entities/projectile.js";
 import { WEAPONS } from "../data/weapons.js";
+import { rng } from "../engine/rng.js";
 
 const BOUNDS_MARGIN = 80;
 const MAX_WEAPONS = 6;
@@ -100,7 +101,7 @@ const FIRE_BEHAVIORS = {
   randomBurst(s, player, enemies, spawn) {
     const hits = s.pierce < 0 ? Infinity : s.pierce + 1;
     for (let i = 0; i < s.count; i++) {
-      const a = Math.random() * Math.PI * 2;
+      const a = rng() * Math.PI * 2;
       spawn({
         motion: "linear",
         x: player.x,
@@ -178,8 +179,8 @@ const FIRE_BEHAVIORS = {
   mines(s, player, enemies, spawn) {
     const hits = s.pierce < 0 ? Infinity : s.pierce + 1;
     for (let i = 0; i < s.count; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = 30 + Math.random() * 50;
+      const a = rng() * Math.PI * 2;
+      const d = 30 + rng() * 50;
       spawn({
         motion: "linear",
         x: player.x + Math.cos(a) * d,
@@ -261,6 +262,7 @@ export function createWeaponSystem(world) {
   let loadoutDefs = [WEAPONS.magic_bolt];
   let kills = 0;
   let bossKills = 0;
+  let damageDealt = 0; // lifetime run damage (for the balance sim's metrics)
 
   const spawn = (config) => pool.acquire().reset(config);
 
@@ -354,10 +356,11 @@ export function createWeaponSystem(world) {
               const eColor = e.color;
               let dmg = p.damage * might;
               let crit = false;
-              if (player.critChance > 0 && Math.random() < player.critChance) {
+              if (player.critChance > 0 && rng() < player.critChance) {
                 dmg *= 2;
                 crit = true;
               }
+              damageDealt += dmg;
               const wasBoss = e.isBoss;
 
               // Juice: hit-flash + knockback along the shot (or radially for
@@ -441,6 +444,7 @@ export function createWeaponSystem(world) {
         if (e.burnTick <= 0) {
           e.burnTick += BURN_TICK;
           const dmg = e.burnDps * BURN_TICK * might;
+          damageDealt += dmg;
           const ex = e.x;
           const ey = e.y;
           const eRadius = e.radius;
@@ -519,6 +523,7 @@ export function createWeaponSystem(world) {
       buildInstances();
       kills = 0;
       bossKills = 0;
+      damageDealt = 0;
     },
 
     get list() {
@@ -541,6 +546,9 @@ export function createWeaponSystem(world) {
     },
     get bossKills() {
       return bossKills;
+    },
+    get damageDealt() {
+      return damageDealt;
     },
   };
 }

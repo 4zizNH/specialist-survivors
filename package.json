@@ -1,0 +1,11 @@
+{
+  "name": "specialist-survivors",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A specialization-gated roguelite survivors game (vanilla JS + Canvas 2D, no build step).",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "simulate": "node sim/simulate.mjs"
+  }
+}

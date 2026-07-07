@@ -47,7 +47,7 @@ import { createToasts } from "./ui/toasts.js";
 import { drawAchievements, achievementRows } from "./ui/achievementsScreen.js";
 import { buyUpgrade, SHOP_UPGRADES } from "./data/shop.js";
 import { loadSave, writeSave, resetSave } from "./meta/saveManager.js";
-import { resolveCharacterStats } from "./meta/progression.js";
+import { createRunPlayer } from "./meta/runSetup.js";
 import { grantRunRewards } from "./meta/rewards.js";
 import {
   evaluateAchievements,
@@ -70,10 +70,6 @@ import { CHARACTERS_LIST, CHARACTERS_BY_ID } from "./data/characters.js";
 import { RARITY_ORDER } from "./data/rarities.js";
 import { TOOL_CATEGORIES } from "./data/tools.js";
 import { WORLD } from "./data/world.js";
-
-// A character's moveSpeed/pickupRadius multipliers scale these baselines.
-const BASE_MOVE_SPEED = 260;
-const BASE_PICKUP_RADIUS = 80;
 
 const view = createCanvas("game");
 const { ctx } = view;
@@ -184,26 +180,9 @@ function startRun() {
   save.lastSelectedCharacterId = def.id;
   writeSave(save);
 
+  // Shared with the headless sim so starting stats/passives can't diverge.
   const prog = save.characters[def.id] || { level: 1, xp: 0 };
-  const s = resolveCharacterStats(def, prog.level);
-  player = createPlayer(WORLD.width / 2, WORLD.height / 2);
-  player.maxHp = s.maxHp;
-  player.hp = s.maxHp;
-  player.speed = BASE_MOVE_SPEED * s.moveSpeed;
-  player.pickupRadius = BASE_PICKUP_RADIUS * s.pickupRadius;
-  player.might = s.might;
-  player.cooldownMult = s.cooldown;
-
-  // Shop: Whetstone — permanent account-wide damage bonus.
-  player.might *= 1 + 0.05 * ((save.shop && save.shop.global_might) || 0);
-
-  // Character passive (the run-affecting hooks; goldMult applies in rewards).
-  const p = def.passive || {};
-  player.critChance = p.critChance ?? 0;
-  player.xpMult = p.xpMult ?? 1;
-  player.onKillHeal = p.onKillHeal ?? 0;
-  player.lowHpSpeedBoost = p.lowHpSpeedBoost ?? 0;
-  if (p.regen != null) player.regen = p.regen;
+  player = createRunPlayer(def, prog, save, WORLD);
 
   // Empty loadout (e.g. a newly added roster member on an old save): auto-equip
   // the first compatible owned tool so the run isn't weaponless.

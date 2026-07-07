@@ -11,6 +11,7 @@ import { RARITY_ORDER } from "../data/rarities.js";
 import { TOOL_BASE_LIST, makeTool } from "../data/tools.js";
 import { CHARACTERS_BY_ID } from "../data/characters.js";
 import { FUSION } from "../data/balance.js";
+import { rng as gameRng } from "../engine/rng.js";
 
 // A single 0..1-ish "performance score". ~0.2 for a quick 30s death, ~1.0 for a
 // strong 5-minute run; boss kills push it further.
@@ -44,7 +45,7 @@ function rarityWeights(score) {
   };
 }
 
-export function rollRarity(score, rng = Math.random) {
+export function rollRarity(score, rng = gameRng) {
   const w = rarityWeights(score);
   const total = RARITY_ORDER.reduce((sum, r) => sum + w[r], 0);
   let roll = rng() * total;
@@ -63,7 +64,7 @@ export function dropChance(score) {
 // Roll the (possible) tool drop. Returns a full tool or null. Drops are biased
 // toward bases the player already OWNS (see FUSION.duplicateDropBias) so
 // duplicates accumulate into fusable stacks instead of feeling like dead loot.
-export function rollToolDrop(score, rng = Math.random, save = null) {
+export function rollToolDrop(score, rng = gameRng, save = null) {
   if (rng() > dropChance(score)) return null;
   let base = TOOL_BASE_LIST[(rng() * TOOL_BASE_LIST.length) | 0];
   const ownedBases = save
@@ -78,7 +79,7 @@ export function rollToolDrop(score, rng = Math.random, save = null) {
 }
 
 // The full end-of-run grant. Mutates `save`; returns the reward summary.
-export function grantRunRewards(save, characterId, results, rng = Math.random) {
+export function grantRunRewards(save, characterId, results, rng = gameRng) {
   const score = performanceScore(results);
   const characterXp = awardRunXp(save, characterId, results.time); // also bumps meta.totalRuns/bestTime
 

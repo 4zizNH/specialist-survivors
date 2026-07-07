@@ -37,12 +37,17 @@ export function createPlayer(x, y) {
     color: "#5ac8ff",
     faceX: 0,
     faceY: 1,
+    // Headless sim: a bot policy sets moveSource to a fn returning {x,y}
+    // (magnitude ≤ 1); when null the player reads the live input layer.
+    moveSource: null,
+    damageTaken: 0, // lifetime run damage taken (sim metric)
 
     // Returns true if the damage APPLIED (false while invulnerable/dead) —
     // used for hit feedback. Death is detected via hp <= 0.
     takeDamage(amount) {
       if (this.iframeTimer > 0 || this.hp <= 0) return false;
       this.hp -= amount;
+      this.damageTaken += amount;
       this.iframeTimer = IFRAME_DURATION;
       if (this.hp <= 0) this.hp = 0;
       return true;
@@ -59,7 +64,9 @@ export function createPlayer(x, y) {
       }
 
       // Analog movement: magnitude ≤ 1 (stick/joystick tilt = partial speed).
-      const mv = moveVector();
+      // The bot policy (headless sim) overrides via moveSource; otherwise the
+      // live input layer drives it.
+      const mv = this.moveSource ? this.moveSource() : moveVector();
       const dx = mv.x;
       const dy = mv.y;
       if (dx !== 0 || dy !== 0) {

@@ -13,6 +13,11 @@
 // 10:00  THE COLOSSUS — real boss, two phases (enrages below 50% HP)
 // 10:00+ everything keeps scaling toward the population cap (~15:00 plateau)
 
+// ── Player baseline (character multipliers scale these) ──────────────────────
+// Single source of truth so the live game and the headless sim start the run
+// player from identical numbers.
+export const PLAYER_BASE = { moveSpeed: 260, pickupRadius: 80 };
+
 // ── Input tuning (fed to the engine's input layer by main.js) ────────────────
 export const INPUT = {
   gamepadDeadZone: 0.22, // stick tilt below this is ignored (movement)
