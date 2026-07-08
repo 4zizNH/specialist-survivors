@@ -85,8 +85,32 @@ let joystickEnabled = false; // main.js enables this during PLAYING only
 let joyTouchId = null;
 const joy = { active: false, baseX: 0, baseY: 0, dx: 0, dy: 0 }; // dx/dy ∈ [-1, 1]
 const touchStarts = new Map(); // id → { x, y, moved } (tap candidates)
-let taps = []; // queued screen-space taps/clicks
+let taps = []; // queued taps/clicks, in DRAW-SPACE CSS px (matches hit regions)
 let wheelDelta = 0; // accumulated mouse-wheel deltaY (consumed by scroll screens)
+let inputCanvas = null; // the <canvas> — used to map pointer coords accurately
+
+// Map a pointer's client (viewport) coords to the canvas DRAW SPACE (the same
+// CSS-pixel space the UI is drawn and hit-tested in). Using the element's real
+// display rect makes taps accurate regardless of any CSS scaling/offset.
+function toLocal(clientX, clientY) {
+  if (!inputCanvas) return { x: clientX, y: clientY };
+  const rect = inputCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const drawW = inputCanvas.width / dpr;
+  const drawH = inputCanvas.height / dpr;
+  return {
+    x: rect.width ? ((clientX - rect.left) / rect.width) * drawW : clientX,
+    y: rect.height ? ((clientY - rect.top) / rect.height) * drawH : clientY,
+  };
+}
+
+// Draw-space viewport size (CSS px) for region-based touch checks.
+function viewSize() {
+  const dpr = window.devicePixelRatio || 1;
+  return inputCanvas
+    ? { w: inputCanvas.width / dpr, h: inputCanvas.height / dpr }
+    : { w: window.innerWidth, h: window.innerHeight };
+}
 
 // --- Init ----------------------------------------------------------------------
 
@@ -123,6 +147,7 @@ export function initInput(canvas = null, config = {}) {
   });
 
   if (canvas) {
+    inputCanvas = canvas;
     const opts = { passive: false }; // we preventDefault to stop browser gestures
     canvas.addEventListener("touchstart", onTouchStart, opts);
     canvas.addEventListener("touchmove", onTouchMove, opts);
@@ -130,7 +155,7 @@ export function initInput(canvas = null, config = {}) {
     canvas.addEventListener("touchcancel", onTouchEnd, opts);
     // Mouse clicks double as taps so canvas menus are clickable on desktop.
     // (Touch taps don't re-fire here: preventDefault suppresses synthetic clicks.)
-    canvas.addEventListener("click", (e) => taps.push({ x: e.clientX, y: e.clientY }));
+    canvas.addEventListener("click", (e) => taps.push(toLocal(e.clientX, e.clientY)));
     // Mouse-wheel accumulates a scroll delta for scrollable screens.
     canvas.addEventListener("wheel", (e) => {
       wheelDelta += e.deltaY;
@@ -144,23 +169,20 @@ export function initInput(canvas = null, config = {}) {
 function onTouchStart(e) {
   e.preventDefault(); // no pull-to-refresh / double-tap zoom during play
   method = "touch";
+  const vs = viewSize();
   for (const t of e.changedTouches) {
+    const p = toLocal(t.clientX, t.clientY); // draw-space coords
     // During runs, a touch in the lower-left region spawns the floating
     // joystick under the finger; everything else is a tap candidate.
-    if (
-      joystickEnabled &&
-      joyTouchId === null &&
-      t.clientX < window.innerWidth * 0.6 &&
-      t.clientY > window.innerHeight * 0.25
-    ) {
+    if (joystickEnabled && joyTouchId === null && p.x < vs.w * 0.6 && p.y > vs.h * 0.25) {
       joyTouchId = t.identifier;
       joy.active = true;
-      joy.baseX = t.clientX;
-      joy.baseY = t.clientY;
+      joy.baseX = p.x;
+      joy.baseY = p.y;
       joy.dx = 0;
       joy.dy = 0;
     } else {
-      touchStarts.set(t.identifier, { x: t.clientX, y: t.clientY, moved: false });
+      touchStarts.set(t.identifier, { x: p.x, y: p.y, moved: false });
     }
   }
 }
@@ -168,10 +190,11 @@ function onTouchStart(e) {
 function onTouchMove(e) {
   e.preventDefault();
   for (const t of e.changedTouches) {
+    const p = toLocal(t.clientX, t.clientY);
     if (t.identifier === joyTouchId) {
       const r = cfg.touchJoystickRadius;
-      let dx = (t.clientX - joy.baseX) / r;
-      let dy = (t.clientY - joy.baseY) / r;
+      let dx = (p.x - joy.baseX) / r;
+      let dy = (p.y - joy.baseY) / r;
       const m = Math.hypot(dx, dy);
       if (m > 1) {
         dx /= m;
@@ -181,7 +204,7 @@ function onTouchMove(e) {
       joy.dy = dy;
     } else {
       const s = touchStarts.get(t.identifier);
-      if (s && Math.hypot(t.clientX - s.x, t.clientY - s.y) > cfg.touchTapMaxDist) {
+      if (s && Math.hypot(p.x - s.x, p.y - s.y) > cfg.touchTapMaxDist) {
         s.moved = true; // drifted too far — a drag, not a tap
       }
     }
@@ -196,7 +219,7 @@ function onTouchEnd(e) {
     } else {
       const s = touchStarts.get(t.identifier);
       touchStarts.delete(t.identifier);
-      if (s && !s.moved) taps.push({ x: t.clientX, y: t.clientY });
+      if (s && !s.moved) taps.push({ x: s.x, y: s.y });
     }
   }
 }

@@ -141,9 +141,9 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
   const colW = compact ? Math.min(360, w - 48) : (pw - 24) / 2;
   const buttons = dailyButtons(save, d.date);
 
-  // Buttons.
-  const bh = 46;
-  const bgap = 10;
+  // Buttons — a touch shorter on compact screens so the leaderboard below fits.
+  const bh = compact ? 42 : 46;
+  const bgap = compact ? 8 : 10;
   let by = colTop;
   for (let i = 0; i < buttons.length; i++) {
     const b = buttons[i];
@@ -175,7 +175,7 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
 
   // Leaderboard column.
   const rightX = compact ? leftX : px + pw / 2 + 12;
-  const rightTop = compact ? by + 28 : colTop;
+  const rightTop = compact ? by + 18 : colTop;
   drawLeaderboard(ctx, save, d.date, rightX, rightTop, colW);
 
   // Controls.
