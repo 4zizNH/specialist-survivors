@@ -86,6 +86,7 @@ let joyTouchId = null;
 const joy = { active: false, baseX: 0, baseY: 0, dx: 0, dy: 0 }; // dx/dy ∈ [-1, 1]
 const touchStarts = new Map(); // id → { x, y, moved } (tap candidates)
 let taps = []; // queued screen-space taps/clicks
+let wheelDelta = 0; // accumulated mouse-wheel deltaY (consumed by scroll screens)
 
 // --- Init ----------------------------------------------------------------------
 
@@ -130,6 +131,11 @@ export function initInput(canvas = null, config = {}) {
     // Mouse clicks double as taps so canvas menus are clickable on desktop.
     // (Touch taps don't re-fire here: preventDefault suppresses synthetic clicks.)
     canvas.addEventListener("click", (e) => taps.push({ x: e.clientX, y: e.clientY }));
+    // Mouse-wheel accumulates a scroll delta for scrollable screens.
+    canvas.addEventListener("wheel", (e) => {
+      wheelDelta += e.deltaY;
+      e.preventDefault();
+    }, opts);
   }
 }
 
@@ -311,6 +317,14 @@ export function pressed(action) {
 export function endFrameInput() {
   pressedActions.clear();
   taps.length = 0; // unconsumed taps don't leak into later frames
+  wheelDelta = 0; // unconsumed wheel doesn't leak into later frames/screens
+}
+
+// Accumulated wheel deltaY since last consume (0 if none). Positive = down.
+export function consumeWheel() {
+  const d = wheelDelta;
+  wheelDelta = 0;
+  return d;
 }
 
 export function inputMethod() {

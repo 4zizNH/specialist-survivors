@@ -147,22 +147,32 @@ function drawRow(ctx, x, y, w, { def, done, cur, goal }) {
     return;
   }
 
-  // Name + description.
+  // Reward width first, so the description can be clipped to never run under it.
+  const reward = rewardText(def);
+  let rewardW = 0;
+  if (reward) {
+    ctx.font = "11px ui-monospace, monospace";
+    rewardW = ctx.measureText(reward).width;
+  }
+
+  // Name + description (description clipped to the free space on its row).
+  ctx.textAlign = "left";
   ctx.fillStyle = done ? "#ffd34d" : "#f0f0f6";
   ctx.font = "700 15px system-ui, sans-serif";
   ctx.fillText(def.name, x + 52, y + 26);
   ctx.fillStyle = "#9a9ab0";
   ctx.font = "12px system-ui, sans-serif";
-  ctx.fillText(def.desc, x + 52, y + 45);
+  const descMax = w - 52 - 16 - (rewardW ? rewardW + 12 : 0);
+  ctx.fillText(clipText(ctx, def.desc, descMax), x + 52, y + 45);
 
-  // Right side: reward + progress.
-  ctx.textAlign = "right";
-  const reward = rewardText(def);
+  // Reward (right).
   if (reward) {
+    ctx.textAlign = "right";
     ctx.fillStyle = done ? "#c8a838" : "#7a7a8c";
     ctx.font = "11px ui-monospace, monospace";
     ctx.fillText(reward, x + w - 16, y + 45);
   }
+  ctx.textAlign = "right";
   if (done) {
     ctx.fillStyle = "#ffd34d";
     ctx.font = "700 12px ui-monospace, monospace";
@@ -186,6 +196,14 @@ function drawRow(ctx, x, y, w, { def, done, cur, goal }) {
       ctx.fill();
     }
   }
+}
+
+// Truncate `text` with an ellipsis so it fits `maxW` at the current font.
+function clipText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
+  return s + "…";
 }
 
 function roundRect(ctx, x, y, w, h, r) {

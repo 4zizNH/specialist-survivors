@@ -21,7 +21,8 @@ import {
   getAttempt,
 } from "../meta/daily.js";
 import { addRegion } from "../engine/hitRegions.js";
-import { hintLine, drawBackChip } from "./inputHints.js";
+import { hintLine } from "./inputHints.js";
+import { fitFont } from "./responsive.js";
 
 // Shared button model (main.js reads this for nav + activation).
 export function dailyButtons(save, date) {
@@ -59,10 +60,10 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
   ctx.fillText(`${d.date} (UTC)   ·   next in ${formatCountdown(msUntilNextUTCDay())}`, w / 2, 72);
 
   // --- Prescription band ---
-  const px = Math.max(24, w / 2 - 380);
-  const pw = Math.min(760, w - 48);
-  const py = 92;
-  const ph = 96;
+  const px = Math.max(16, w / 2 - 380);
+  const pw = Math.min(760, w - (compact ? 32 : 48));
+  const py = 90;
+  const ph = 92;
   roundRect(ctx, px, py, pw, ph, 12);
   ctx.fillStyle = "rgba(18, 18, 28, 0.95)";
   ctx.fill();
@@ -71,56 +72,71 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
   ctx.stroke();
 
   // Character portrait.
+  const portR = compact ? 26 : 30;
+  const portX = px + portR + 16;
   ctx.fillStyle = char.color;
   ctx.beginPath();
-  ctx.arc(px + 46, py + ph / 2, 30, 0, Math.PI * 2);
+  ctx.arc(portX, py + ph / 2, portR, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#0a0a0f";
-  ctx.font = "700 28px system-ui, sans-serif";
+  ctx.font = `700 ${compact ? 24 : 28}px system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(char.name[0], px + 46, py + ph / 2 + 1);
+  ctx.fillText(char.name[0], portX, py + ph / 2 + 1);
 
+  // Prescription text — three stacked lines that fit the remaining width.
+  const tx = portX + portR + 14;
+  const availW = px + pw - tx - (compact ? 14 : 190); // wide: leave room for the notice
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#f0f0f6";
-  ctx.font = "700 20px system-ui, sans-serif";
-  ctx.fillText(`Today: ${char.name}`, px + 90, py + 32);
-  ctx.font = "700 13px ui-monospace, monospace";
-  ctx.fillStyle = spec.color;
-  ctx.fillText(spec.label.toUpperCase(), px + 90, py + 52);
+  ctx.font = "700 19px system-ui, sans-serif";
+  ctx.fillText(`Today: ${char.name}`, tx, py + 30);
   ctx.fillStyle = rar.color;
-  ctx.fillText(`${rar.label.toUpperCase()} ${tool.name}`, px + 90 + 90, py + 52);
+  fitFont(ctx, `${rar.label.toUpperCase()} ${tool.name}`, availW, 14, { minPx: 11, weight: "700", family: "ui-monospace, monospace" });
+  ctx.fillText(`${rar.label.toUpperCase()} ${tool.name}`, tx, py + 54);
   ctx.fillStyle = "#9a9ab0";
   ctx.font = "12px ui-monospace, monospace";
-  ctx.fillText(`DMG ${tool.damage}  CD ${tool.cooldown}s  AR ${tool.area}`, px + 90, py + 74);
+  ctx.fillText(`${spec.label.toUpperCase()} · DMG ${tool.damage} · CD ${tool.cooldown}s · AR ${tool.area}`, tx, py + 76);
 
-  // Fairness notice (right side of the band).
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#ffb03a";
-  ctx.font = "700 12px ui-monospace, monospace";
-  ctx.fillText("⚖ FAIR RUN", px + pw - 18, py + 30);
-  ctx.fillStyle = "#9a9ab0";
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.fillText("Everyone is Level 1 — character levels", px + pw - 18, py + 50);
-  ctx.fillText("& shop upgrades are disabled today.", px + pw - 18, py + 66);
+  let flow = py + ph; // running y below the band
+
+  // Fairness notice: inside the band (right) on wide screens; a full line below
+  // the band on narrow ones so nothing overlaps.
+  if (compact) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffb03a";
+    ctx.font = "700 12px system-ui, sans-serif";
+    ctx.fillText("⚖ Fair run — everyone is Level 1 (no meta bonuses today)", w / 2, flow + 22);
+    flow += 34;
+  } else {
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ffb03a";
+    ctx.font = "700 12px ui-monospace, monospace";
+    ctx.fillText("⚖ FAIR RUN", px + pw - 18, py + 30);
+    ctx.fillStyle = "#9a9ab0";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText("Everyone is Level 1 — character levels", px + pw - 18, py + 50);
+    ctx.fillText("& shop upgrades are disabled today.", px + pw - 18, py + 66);
+  }
 
   // Attempt status line.
   ctx.textAlign = "center";
-  ctx.font = "600 15px system-ui, sans-serif";
+  ctx.font = "600 14px system-ui, sans-serif";
+  const statusY = flow + 24;
   if (attempt && attempt.status === "done") {
     ctx.fillStyle = "#5fd66f";
-    ctx.fillText(`Your score today: ${attempt.score.toLocaleString()}`, w / 2, py + ph + 26);
+    ctx.fillText(`Your score today: ${attempt.score.toLocaleString()}`, w / 2, statusY);
   } else if (attempt && attempt.status === "dnf") {
     ctx.fillStyle = "#c85a5a";
-    ctx.fillText("Scored attempt spent (did not finish). Practice is still open.", w / 2, py + ph + 26);
+    ctx.fillText("Scored attempt spent (did not finish). Practice is still open.", w / 2, statusY);
   } else {
     ctx.fillStyle = "#7ad0ff";
-    ctx.fillText("Not attempted yet — one scored run today.", w / 2, py + ph + 26);
+    ctx.fillText("Not attempted yet — one scored run today.", w / 2, statusY);
   }
 
   // --- Two columns: buttons (left) + leaderboard (right) ---
-  const colTop = py + ph + 46;
+  const colTop = statusY + 24;
   const leftX = compact ? w / 2 - Math.min(360, w - 48) / 2 : px;
   const colW = compact ? Math.min(360, w - 48) : (pw - 24) / 2;
   const buttons = dailyButtons(save, d.date);
@@ -172,7 +188,8 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
     w / 2,
     h - 14
   );
-  drawBackChip(ctx, view);
+  // No top-left back chip here — the daily screen has an explicit "Back to Hub"
+  // button, and a chip would collide with the wide centered title.
 }
 
 function drawLeaderboard(ctx, save, date, x, y, w) {

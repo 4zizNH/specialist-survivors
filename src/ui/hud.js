@@ -4,10 +4,14 @@
 // (bottom). Tool icons are rarity-bordered chips: border = rarity color, dot =
 // the weapon's own color, small level number in the corner. A weapon at max
 // level shows MAX (gold), an evolvable one pulses gold, an evolved one gets ★.
+//
+// Everything scales by hudScale(view) and the HP bar is width-capped so it can
+// never collide with the centered timer on a phone.
 
 import { rarityColor } from "../data/rarities.js";
 import { PASSIVES } from "../data/passives.js";
 import { evolutionStatus } from "../systems/evolution.js";
+import { hudScale } from "./responsive.js";
 
 export function formatTime(seconds) {
   const s = Math.max(0, Math.floor(seconds));
@@ -19,12 +23,13 @@ export function formatTime(seconds) {
 export function drawHud(ctx, view, { player, xp, runTime, kills, weapons }) {
   const w = view.width;
   const h = view.height;
+  const s = hudScale(view); // 0.62–1 by viewport width
 
-  // --- HP bar (top-left) ---
-  const hpW = 240;
-  const hpH = 18;
-  const hx = 12;
-  const hy = 12;
+  // --- HP bar (top-left) — width-capped so it never reaches the timer ---
+  const hx = 10;
+  const hy = 10 * s;
+  const hpH = 18 * s;
+  const hpW = Math.min(240 * s, w / 2 - 58); // leave center clear for the timer
   roundRect(ctx, hx, hy, hpW, hpH, 4);
   ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
   ctx.fill();
@@ -35,16 +40,18 @@ export function drawHud(ctx, view, { player, xp, runTime, kills, weapons }) {
     ctx.fill();
   }
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 12px ui-monospace, monospace";
+  ctx.font = `bold ${Math.round(12 * s)}px ui-monospace, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(`${Math.ceil(player.hp)} / ${player.maxHp} HP`, hx + hpW / 2, hy + hpH / 2 + 1);
+  // Drop the " HP" suffix when the bar is narrow so the numbers stay readable.
+  const hpLabel = hpW < 150 ? `${Math.ceil(player.hp)}/${player.maxHp}` : `${Math.ceil(player.hp)} / ${player.maxHp} HP`;
+  ctx.fillText(hpLabel, hx + hpW / 2, hy + hpH / 2 + 1);
 
   // --- Equipped-tool icons (under the HP bar) ---
-  const iy = hy + hpH + 8;
-  const size = 30;
+  const iy = hy + hpH + 8 * s;
+  const size = 30 * s;
   if (weapons && weapons.length) {
-    const gap = 6;
+    const gap = 6 * s;
     let ix = hx;
     for (const inst of weapons) {
       const status = evolutionStatus(inst, player.passiveItems);
@@ -62,10 +69,10 @@ export function drawHud(ctx, view, { player, xp, runTime, kills, weapons }) {
       // Weapon-color core.
       ctx.fillStyle = inst.stats.color || "#ffffff";
       ctx.beginPath();
-      ctx.arc(ix + size / 2, iy + size / 2, 7, 0, Math.PI * 2);
+      ctx.arc(ix + size / 2, iy + size / 2, 7 * s, 0, Math.PI * 2);
       ctx.fill();
       // Level badge — MAX in gold, ★ once evolved.
-      ctx.font = "bold 9px ui-monospace, monospace";
+      ctx.font = `bold ${Math.round(9 * s)}px ui-monospace, monospace`;
       ctx.textAlign = "right";
       ctx.textBaseline = "alphabetic";
       if (inst.evolved) {
@@ -85,9 +92,9 @@ export function drawHud(ctx, view, { player, xp, runTime, kills, weapons }) {
   // --- Owned passive items (small round chips under the tool icons) ---
   const passives = player.passiveItems || [];
   if (passives.length) {
-    const pr = 9;
+    const pr = 9 * s;
     let px = hx + pr;
-    const py = iy + size + 8 + pr;
+    const py = iy + size + 8 * s + pr;
     for (const id of passives) {
       const def = PASSIVES[id];
       if (!def) continue;
@@ -99,37 +106,37 @@ export function drawHud(ctx, view, { player, xp, runTime, kills, weapons }) {
       ctx.strokeStyle = def.color;
       ctx.stroke();
       ctx.fillStyle = def.color;
-      ctx.font = "bold 10px ui-monospace, monospace";
+      ctx.font = `bold ${Math.round(10 * s)}px ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(def.name[0], px, py + 0.5);
-      px += pr * 2 + 5;
+      px += pr * 2 + 5 * s;
     }
   }
 
   // --- Run timer (top-center) ---
   ctx.fillStyle = "#e8e8f0";
-  ctx.font = "700 26px ui-monospace, monospace";
+  ctx.font = `700 ${Math.round(26 * s)}px ui-monospace, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText(formatTime(runTime), w / 2, 10);
+  ctx.fillText(formatTime(runTime), w / 2, 8 * s);
 
   // --- Kills (top-right) ---
   ctx.fillStyle = "#cfcfe0";
-  ctx.font = "bold 14px ui-monospace, monospace";
+  ctx.font = `bold ${Math.round(14 * s)}px ui-monospace, monospace`;
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
-  ctx.fillText(`Kills ${kills}`, w - 12, 15);
+  ctx.fillText(`Kills ${kills}`, w - 10, 12 * s);
 
   // --- XP bar + level (bottom) ---
-  const barH = 16;
+  const barH = Math.max(12, 16 * s);
   const y = h - barH;
   ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
   ctx.fillRect(0, y, w, barH);
   ctx.fillStyle = "#3ea76a";
   ctx.fillRect(0, y, w * Math.min(1, xp.progress), barH);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 11px ui-monospace, monospace";
+  ctx.font = `bold ${Math.round(11 * s)}px ui-monospace, monospace`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   ctx.fillText(`LV ${xp.level}`, 8, y + barH / 2);

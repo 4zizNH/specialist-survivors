@@ -12,6 +12,7 @@ import {
   pressed,
   endFrameInput,
   consumeTap,
+  consumeWheel,
   setTouchJoystickEnabled,
   padDisconnected,
 } from "./engine/input.js";
@@ -638,11 +639,14 @@ function handleTransitions() {
 
     case GameState.ACHIEVEMENTS: {
       const maxScroll = Math.max(0, achievementRows(save).length - 6);
+      const wheel = consumeWheel();
       if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
       else if (pressed("navUp") || tapId === "scrollUp")
         achievementsScroll = Math.max(0, achievementsScroll - 1);
       else if (pressed("navDown") || tapId === "scrollDown")
         achievementsScroll = Math.min(maxScroll, achievementsScroll + 1);
+      else if (wheel !== 0)
+        achievementsScroll = Math.max(0, Math.min(maxScroll, achievementsScroll + Math.sign(wheel)));
       break;
     }
 

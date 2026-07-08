@@ -11,7 +11,8 @@ import { resolveCharacterStats, characterXpToNext } from "../meta/progression.js
 import { SPECIALIZATIONS } from "../data/characters.js";
 import { formatTime } from "./hud.js";
 import { addRegion } from "../engine/hitRegions.js";
-import { hintLine, isTouch } from "./inputHints.js";
+import { hintLine, isTouch, drawBackChip } from "./inputHints.js";
+import { fitFont } from "./responsive.js";
 
 // Cards are authored at this logical size and uniformly scaled down to fit
 // narrow screens (phone portrait ⇒ 2 columns of shrunken cards).
@@ -30,8 +31,9 @@ export function drawCharacterSelect(ctx, view, { characters, progress, selectedI
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#e8e8f0";
-  ctx.font = `700 ${compact ? 26 : 40}px system-ui, sans-serif`;
-  ctx.fillText("CHOOSE YOUR SPECIALIST", w / 2, compact ? 60 : 84);
+  // Fit within the width, leaving the top-left corner clear for the back chip.
+  fitFont(ctx, "CHOOSE YOUR SPECIALIST", w - 120, compact ? 26 : 40, { minPx: 18 });
+  ctx.fillText("CHOOSE YOUR SPECIALIST", w / 2, compact ? 54 : 84);
   ctx.fillStyle = "#7a7a8c";
   ctx.font = "15px system-ui, sans-serif";
   ctx.fillText(
@@ -86,6 +88,8 @@ export function drawCharacterSelect(ctx, view, { characters, progress, selectedI
     drawFooterButton(ctx, w / 2 - 150, h - 108, 180, 48, selUnlocked ? "▶ START RUN" : "🔒 LOCKED", selUnlocked ? "#5fd66f" : "#5a5a6c", "start");
     drawFooterButton(ctx, w / 2 + 42, h - 108, 108, 48, "EQUIP", selUnlocked ? "#5ac8ff" : "#5a5a6c", "equip");
   }
+
+  drawBackChip(ctx, view);
 }
 
 function drawFooterButton(ctx, x, y, w, h, label, color, regionId) {

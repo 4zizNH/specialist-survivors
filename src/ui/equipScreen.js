@@ -24,34 +24,43 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
   ctx.fillRect(0, 0, w, h);
 
   // --- Header: portrait, name, spec, equip slot ---
+  // Portrait sits right of the top-left back chip so they never overlap.
+  const narrow = w < 620;
   ctx.fillStyle = character.color;
   ctx.beginPath();
-  ctx.arc(58, 56, 26, 0, Math.PI * 2);
+  ctx.arc(116, 52, 24, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#0a0a0f";
-  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.font = "700 24px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(character.name[0], 58, 57);
+  ctx.fillText(character.name[0], 116, 53);
 
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#f0f0f6";
-  ctx.font = "700 26px system-ui, sans-serif";
-  ctx.fillText(`${character.name}`, 96, 50);
-  ctx.font = "700 13px ui-monospace, monospace";
+  ctx.font = "700 22px system-ui, sans-serif";
+  ctx.fillText(`${character.name}`, 150, 46);
+  ctx.font = "700 12px ui-monospace, monospace";
   ctx.fillStyle = spec.color;
-  ctx.fillText(`${spec.label.toUpperCase()} SPECIALIST · LV ${level}`, 96, 70);
+  ctx.fillText(`${spec.label.toUpperCase()} · LV ${level}`, 150, 66);
 
-  // Equip slot summary (right side).
+  // Equip slot summary (right side). Full names on wide screens; a compact
+  // count on narrow ones so it can't collide with the character name.
   const equippedNames = (loadout || []).map((t) => t.name);
   ctx.textAlign = "right";
-  ctx.fillStyle = "#9a9ab0";
-  ctx.font = "14px ui-monospace, monospace";
-  ctx.fillText(`Equipped (${equippedNames.length}/${slots}):`, w - 40, 44);
-  ctx.fillStyle = equippedNames.length ? "#e0e0ea" : "#5a5a6c";
-  ctx.font = "700 15px system-ui, sans-serif";
-  ctx.fillText(equippedNames.length ? equippedNames.join(", ") : "— none —", w - 40, 66);
+  if (narrow) {
+    ctx.fillStyle = equippedNames.length ? "#e0e0ea" : "#5a5a6c";
+    ctx.font = "700 14px ui-monospace, monospace";
+    ctx.fillText(`${equippedNames.length}/${slots} equipped`, w - 14, 40);
+  } else {
+    ctx.fillStyle = "#9a9ab0";
+    ctx.font = "14px ui-monospace, monospace";
+    ctx.fillText(`Equipped (${equippedNames.length}/${slots}):`, w - 40, 44);
+    ctx.fillStyle = equippedNames.length ? "#e0e0ea" : "#5a5a6c";
+    ctx.font = "700 15px system-ui, sans-serif";
+    ctx.fillText(equippedNames.length ? equippedNames.join(", ") : "— none —", w - 40, 66);
+  }
 
   // Divider + prompt.
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -59,12 +68,14 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
   ctx.moveTo(40, 92);
   ctx.lineTo(w - 40, 92);
   ctx.stroke();
-  ctx.textAlign = "left";
+  ctx.textAlign = narrow ? "center" : "left";
   ctx.fillStyle = "#7a7a8c";
   ctx.font = "13px system-ui, sans-serif";
   ctx.fillText(
-    `Only ${spec.label} tools can be equipped by ${character.name}. Incompatible tools are locked.`,
-    40,
+    narrow
+      ? `Only ${spec.label} tools fit ${character.name}.`
+      : `Only ${spec.label} tools can be equipped by ${character.name}. Incompatible tools are locked.`,
+    narrow ? w / 2 : 40,
     112
   );
 

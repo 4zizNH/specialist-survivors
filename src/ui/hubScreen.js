@@ -5,6 +5,7 @@
 
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine } from "./inputHints.js";
+import { fitFont, clamp } from "./responsive.js";
 
 export const HUB_OPTIONS = [
   { id: "play", label: "PLAY", desc: "Pick a specialist, equip a tool, enter the arena" },
@@ -26,15 +27,23 @@ export function drawHub(ctx, view, { save, selectedIndex, dailyStatus }) {
   ctx.fillStyle = "#0a0a0f";
   ctx.fillRect(0, 0, w, h);
 
-  // Title.
+  // Header is top-anchored and font-fitted so it never overflows; the row band
+  // then fills whatever vertical space is left (works in portrait + landscape).
+  const shortH = h < 520;
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.textBaseline = "alphabetic";
+  let y = shortH ? 30 : 52;
   ctx.fillStyle = "#e8e8f0";
-  ctx.font = "700 54px system-ui, sans-serif";
-  ctx.fillText("SPECIALIST SURVIVORS", w / 2, h * 0.2);
-  ctx.fillStyle = "#7a7a8c";
-  ctx.font = "15px system-ui, sans-serif";
-  ctx.fillText("A roguelite of specialists and their tools", w / 2, h * 0.2 + 40);
+  const titlePx = fitFont(ctx, "SPECIALIST SURVIVORS", w - 28, shortH ? 30 : 52, { minPx: 20 });
+  ctx.fillText("SPECIALIST SURVIVORS", w / 2, y);
+  y += titlePx * 0.35 + 20;
+
+  if (!shortH) {
+    ctx.fillStyle = "#7a7a8c";
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillText("A roguelite of specialists and their tools", w / 2, y);
+    y += 26;
+  }
 
   // Profile summary (+ latest cosmetic title, if any achievement granted one).
   const gold = save.currency?.gold ?? 0;
@@ -42,54 +51,74 @@ export function drawHub(ctx, view, { save, selectedIndex, dailyStatus }) {
   const runs = save.meta?.totalRuns ?? 0;
   const best = save.meta?.bestTimeSec ?? 0;
   ctx.fillStyle = "#ffd34d";
-  ctx.font = "600 16px ui-monospace, monospace";
-  ctx.fillText(
-    `◆ ${gold} gold      ${tools} tools      ${runs} runs      best ${Math.floor(best / 60)}:${String(Math.floor(best % 60)).padStart(2, "0")}`,
-    w / 2,
-    h * 0.2 + 78
-  );
+  const summary = `◆ ${gold} gold    ${tools} tools    ${runs} runs    best ${Math.floor(best / 60)}:${String(Math.floor(best % 60)).padStart(2, "0")}`;
+  fitFont(ctx, summary, w - 20, 16, { minPx: 10, weight: "600", family: "ui-monospace, monospace" });
+  ctx.fillText(summary, w / 2, y);
+  y += 22;
   const title = save.titles?.length ? save.titles[save.titles.length - 1] : null;
-  if (title) {
+  if (title && !shortH) {
     ctx.fillStyle = "#b06bff";
     ctx.font = "italic 600 14px system-ui, sans-serif";
-    ctx.fillText(`“${title}”`, w / 2, h * 0.2 + 102);
+    ctx.fillText(`“${title}”`, w / 2, y);
+    y += 20;
   }
 
-  // Menu options (sized so the 8 rows fit above the footer hint, and never
-  // wider than a phone viewport).
-  const optW = Math.min(420, w - 32);
-  const optH = 48;
-  const gap = 9;
-  let y = h * 0.34;
+  // Menu rows fill the space between the header and the footer hint. In wide-
+  // and-short (landscape) viewports they split into two columns so all 8 fit.
+  const n = HUB_OPTIONS.length;
+  const footerY = h - 16;
+  const twoCol = w > h && h < 560;
+  const cols = twoCol ? 2 : 1;
+  const rowsPerCol = Math.ceil(n / cols);
+  const gap = 8;
+  const colGap = 16;
+  const rowsTop = y + 10;
+  const optH = clamp((footerY - rowsTop - 12 - (rowsPerCol - 1) * gap) / rowsPerCol, 34, 50);
+  const optW = cols === 2 ? Math.min(400, (w - 24 - colGap) / 2) : Math.min(440, w - 24);
+  const totalW = cols * optW + (cols - 1) * colGap;
+  const x0 = (w - totalW) / 2;
+
   for (let i = 0; i < HUB_OPTIONS.length; i++) {
     const opt = HUB_OPTIONS[i];
     const selected = i === selectedIndex;
-    const x = w / 2 - optW / 2;
-    addRegion(`sel:${i}`, x, y, optW, optH);
+    const col = Math.floor(i / rowsPerCol);
+    const row = i % rowsPerCol;
+    const x = x0 + col * (optW + colGap);
+    const ry = rowsTop + row * (optH + gap);
+    addRegion(`sel:${i}`, x, ry, optW, optH);
 
-    roundRect(ctx, x, y, optW, optH, 10);
+    roundRect(ctx, x, ry, optW, optH, 10);
     ctx.fillStyle = selected ? "rgba(40, 40, 58, 0.98)" : "rgba(18, 18, 26, 0.9)";
     ctx.fill();
     ctx.lineWidth = selected ? 2.5 : 1;
     ctx.strokeStyle = selected ? "#5ac8ff" : opt.id === "daily" ? "rgba(255, 211, 77, 0.4)" : "rgba(255,255,255,0.12)";
     ctx.stroke();
 
+    // Two-line rows when tall enough; single centered label when squeezed.
+    const twoLine = optH >= 42;
     const danger = opt.id === "reset";
     ctx.textAlign = "left";
     ctx.fillStyle = danger ? (selected ? "#ff8a7a" : "#a05a5a") : opt.id === "daily" ? "#ffd34d" : selected ? "#ffffff" : "#c0c0d0";
-    ctx.font = "700 17px system-ui, sans-serif";
-    ctx.fillText(opt.label, x + 22, y + 19);
-    ctx.fillStyle = "#7a7a8c";
-    ctx.font = "12px system-ui, sans-serif";
-    ctx.fillText(opt.id === "daily" && dailyStatus ? dailyStatus : opt.desc, x + 22, y + 36);
+    ctx.font = "700 16px system-ui, sans-serif";
+    ctx.textBaseline = twoLine ? "alphabetic" : "middle";
+    ctx.fillText(opt.label, x + 18, twoLine ? ry + optH * 0.42 : ry + optH / 2);
+    if (twoLine) {
+      ctx.fillStyle = "#7a7a8c";
+      ctx.font = "12px system-ui, sans-serif";
+      const desc = opt.id === "daily" && dailyStatus ? dailyStatus : opt.desc;
+      fitFont(ctx, desc, optW - 44, 12, { minPx: 9, weight: "400" });
+      ctx.fillText(desc, x + 18, ry + optH * 0.78);
+    }
+    ctx.textBaseline = "alphabetic";
 
     if (selected) {
       ctx.textAlign = "right";
       ctx.fillStyle = "#5ac8ff";
-      ctx.font = "700 22px system-ui, sans-serif";
-      ctx.fillText("▶", x + optW - 20, y + optH / 2);
+      ctx.font = "700 20px system-ui, sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText("▶", x + optW - 16, ry + optH / 2);
+      ctx.textBaseline = "alphabetic";
     }
-    y += optH + gap;
   }
 
   ctx.textAlign = "center";

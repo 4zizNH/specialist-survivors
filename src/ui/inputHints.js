@@ -3,8 +3,9 @@
 // the active input method (from the input layer) picks one — so a gamepad user
 // sees "Ⓐ select", a touch user sees "tap", and keyboard users see keys.
 //
-// Also home to the shared touch chrome: the "‹ Back" chip drawn on sub-screens
-// when touch is the active method (registers the "back" hit region).
+// Also home to the shared "‹ Back" chip: a always-visible, clickable/tappable
+// back button (top-left) so mouse AND touch users can leave any sub-screen
+// without knowing the Esc shortcut. It registers the "back" hit region.
 
 import { inputMethod } from "../engine/input.js";
 import { addRegion } from "../engine/hitRegions.js";
@@ -18,30 +19,26 @@ export function isTouch() {
   return inputMethod() === "touch";
 }
 
-// Bottom-left back chip (44px+ touch target). Drawn + registered only when
-// touch is active; keyboard/gamepad users use Esc / Ⓑ instead.
+// Compact top-left back button — a "‹" circle (the universal mobile back). Kept
+// small so it clears the centered screen titles; always drawn on sub-screens,
+// clickable/tappable via the "back" hit region. Keyboard users can still press
+// Esc and gamepad users Ⓑ.
 export function drawBackChip(ctx, view) {
-  if (!isTouch()) return;
-  const x = 12;
-  const h = 44;
-  const w = 92;
-  const y = view.height - h - 12;
+  const cx = 30;
+  const cy = 30;
+  const r = 20;
   ctx.beginPath();
-  ctx.moveTo(x + 10, y);
-  ctx.arcTo(x + w, y, x + w, y + h, 10);
-  ctx.arcTo(x + w, y + h, x, y + h, 10);
-  ctx.arcTo(x, y + h, x, y, 10);
-  ctx.arcTo(x, y, x + w, y, 10);
-  ctx.closePath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(24, 24, 34, 0.92)";
   ctx.fill();
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeStyle = "rgba(255,255,255,0.30)";
   ctx.stroke();
   ctx.fillStyle = "#cfcfe0";
-  ctx.font = "700 16px system-ui, sans-serif";
+  ctx.font = "700 26px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("‹ Back", x + w / 2, y + h / 2 + 1);
-  addRegion("back", x - 6, y - 6, w + 12, h + 12); // generous target
+  ctx.fillText("‹", cx - 1, cy);
+  ctx.textBaseline = "alphabetic";
+  addRegion("back", cx - r - 6, cy - r - 6, r * 2 + 12, r * 2 + 12); // generous target
 }
