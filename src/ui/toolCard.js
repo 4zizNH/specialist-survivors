@@ -66,12 +66,13 @@ export function drawToolCard(ctx, x, y, w, h, tool, opts = {}) {
   ctx.textBaseline = "middle";
   ctx.fillText(catLabel, pillX + pillW / 2, y + 46);
 
-  // Stats.
+  // Stats — shrunk to fit the card so long values (e.g. epic/legendary
+  // rolls with more digits) never spill past the card's edge.
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.font = "12px ui-monospace, monospace";
   ctx.fillStyle = "#9a9ab0";
-  const line = `DMG ${stats.damage}   CD ${stats.cooldown}s   AR ${stats.area}`;
+  const line = `DMG ${stats.damage}  CD ${stats.cooldown}s  AR ${stats.area}`;
+  fitMonoFont(ctx, line, w - 24, 12);
   ctx.fillText(line, x + 12, y + 74);
 
   // Stack count badge (×N, bottom-right).
@@ -144,13 +145,10 @@ export function drawToolDetailPanel(ctx, view, tool, top, height = 118, evolutio
 
   if (compact) {
     // Compact: one dense stat line + one evolution line; skip the extras.
-    ctx.font = "12px ui-monospace, monospace";
     ctx.fillStyle = "#cfcfe0";
-    ctx.fillText(
-      `DMG ${s.damage}  CD ${s.cooldown}s  AR ${s.area}  ×${s.count}  P ${s.pierce < 0 ? "∞" : s.pierce}`,
-      x + 18,
-      top + 74
-    );
+    const line = `DMG ${s.damage}  CD ${s.cooldown}s  AR ${s.area}  ×${s.count}  P ${s.pierce < 0 ? "∞" : s.pierce}`;
+    fitMonoFont(ctx, line, width - 36, 12);
+    ctx.fillText(line, x + 18, top + 74);
     if (evo) {
       ctx.fillStyle = evoSeen ? "#ffd34d" : "#7a7a8c";
       ctx.fillText(`⚡ Evolution: ${evoSeen ? evo.evolvedName : "???"}`, x + 18, top + 96);
@@ -208,6 +206,18 @@ export function drawToolDetailPanel(ctx, view, tool, top, height = 118, evolutio
       ctx.fillStyle = "#5a5a6c";
       ctx.fillText("max it in a run holding the right passive…", x + width - 18, top + 96);
     }
+  }
+}
+
+// Sets ctx.font to the largest monospace size (≤ basePx, ≥ 8px) at which
+// `text` fits `maxWidth`, so stat lines never overflow the card/panel they're
+// drawn in — long rolls (bigger numbers) just render a touch smaller.
+function fitMonoFont(ctx, text, maxWidth, basePx) {
+  let px = basePx;
+  ctx.font = `${px}px ui-monospace, monospace`;
+  while (px > 8 && ctx.measureText(text).width > maxWidth) {
+    px -= 1;
+    ctx.font = `${px}px ui-monospace, monospace`;
   }
 }
 

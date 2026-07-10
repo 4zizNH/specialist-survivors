@@ -15,6 +15,8 @@ import { hintLine, drawBackChip, isTouch } from "./inputHints.js";
 
 const ROW_H = 62;
 const ROW_GAP = 10;
+// Pixels of drag equivalent to one row of scroll (exported for touch-drag input).
+export const SCROLL_ROW_STEP = ROW_H + ROW_GAP;
 
 // Ordered rows: headers + in-progress + completed. Exported so main.js can
 // clamp the scroll offset.
@@ -88,7 +90,7 @@ export function drawAchievements(ctx, view, { save, scroll }) {
   ctx.fillStyle = "#5a5a6c";
   ctx.font = "13px system-ui, sans-serif";
   ctx.fillText(
-    hintLine("↑ ↓ scroll      Esc back", "▲ ▼ scroll      Ⓑ back", "▲ ▼ to scroll"),
+    hintLine("↑ ↓ scroll      Esc back", "▲ ▼ scroll      Ⓑ back", "swipe or ▲ ▼ to scroll"),
     w / 2,
     h - 16
   );

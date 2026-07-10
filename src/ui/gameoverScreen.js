@@ -10,11 +10,22 @@ import { RARITIES } from "../data/rarities.js";
 import { rewardText } from "../meta/achievements.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine } from "./inputHints.js";
+import { clamp } from "./responsive.js";
 
+// This screen's layout is authored for a ~700px-wide canvas. On narrower
+// phones we scale the whole thing down ("zoom out") instead of reflowing it,
+// so every stat/label stays inside its box instead of clipping at the edges.
+// `w`/`h` below are the resulting virtual (pre-scale) canvas size — the
+// existing layout math is unchanged, addRegion() calls just need their
+// rects converted back to real screen space via `scale`.
 export function drawGameOver(ctx, view, results) {
-  const w = view.width;
-  const h = view.height;
+  const scale = clamp(view.width / 700, 0.62, 1);
+  const w = view.width / scale;
+  const h = view.height / scale;
   const daily = results.daily || null;
+
+  ctx.save();
+  ctx.scale(scale, scale);
 
   ctx.fillStyle = "#0a0a0f";
   ctx.fillRect(0, 0, w, h);
@@ -52,7 +63,7 @@ export function drawGameOver(ctx, view, results) {
   // Daily runs replace the rewards panel with a score breakdown (scored) or a
   // simple practice note; normal runs show the rewards panel below.
   if (daily) {
-    drawDailyResult(ctx, view, daily, panelX, panelY, panelW);
+    drawDailyResult(ctx, view, daily, panelX, panelY, panelW, scale);
     ctx.textAlign = "center";
     ctx.fillStyle = "#7a7a8c";
     ctx.font = "16px system-ui, sans-serif";
@@ -61,7 +72,8 @@ export function drawGameOver(ctx, view, results) {
       w / 2,
       h - 30
     );
-    addRegion("continue", 0, h - 64, w, 64);
+    addRegion("continue", 0, (h - 64) * scale, w * scale, 64 * scale);
+    ctx.restore();
     return;
   }
 
@@ -171,7 +183,7 @@ export function drawGameOver(ctx, view, results) {
       ay + 71
     );
     ctx.textAlign = "center";
-    addRegion("tryChar", bx, ay, bw, bh); // the whole banner is the target
+    addRegion("tryChar", bx * scale, ay * scale, bw * scale, bh * scale); // the whole banner is the target
     ay += bh + 10;
   }
 
@@ -183,12 +195,13 @@ export function drawGameOver(ctx, view, results) {
     h - 30
   );
   // Touch: the bottom strip returns to the hub (doesn't overlap the banner).
-  addRegion("continue", 0, h - 64, w, 64);
+  addRegion("continue", 0, (h - 64) * scale, w * scale, 64 * scale);
+  ctx.restore();
 }
 
 // Daily results: a transparent score breakdown + local rank + share code
 // (scored), or a plain note (practice).
-function drawDailyResult(ctx, view, daily, x, y, w) {
+function drawDailyResult(ctx, view, daily, x, y, w, scale) {
   const h = daily.practice ? 120 : 300;
   roundRect(ctx, x, y, w, h, 14);
   ctx.fillStyle = "rgba(18, 18, 28, 0.95)";
@@ -276,7 +289,7 @@ function drawDailyResult(ctx, view, daily, x, y, w) {
   ctx.textBaseline = "middle";
   ctx.fillText("Copy Share Code", x + w / 2, byy + 16);
   ctx.textBaseline = "middle";
-  addRegion("copyDaily", bx - 4, byy - 4, bw + 8, 38);
+  addRegion("copyDaily", (bx - 4) * scale, (byy - 4) * scale, (bw + 8) * scale, 38 * scale);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

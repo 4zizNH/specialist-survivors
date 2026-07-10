@@ -87,6 +87,7 @@ const joy = { active: false, baseX: 0, baseY: 0, dx: 0, dy: 0 }; // dx/dy ∈ [-
 const touchStarts = new Map(); // id → { x, y, moved } (tap candidates)
 let taps = []; // queued taps/clicks, in DRAW-SPACE CSS px (matches hit regions)
 let wheelDelta = 0; // accumulated mouse-wheel deltaY (consumed by scroll screens)
+let touchDragDeltaY = 0; // accumulated finger-drag deltaY, CSS px (same sign as wheelDelta)
 let inputCanvas = null; // the <canvas> — used to map pointer coords accurately
 
 // Map a pointer's client (viewport) coords to the canvas DRAW SPACE (the same
@@ -204,8 +205,15 @@ function onTouchMove(e) {
       joy.dy = dy;
     } else {
       const s = touchStarts.get(t.identifier);
-      if (s && Math.hypot(p.x - s.x, p.y - s.y) > cfg.touchTapMaxDist) {
-        s.moved = true; // drifted too far — a drag, not a tap
+      if (s) {
+        if (Math.hypot(p.x - s.x, p.y - s.y) > cfg.touchTapMaxDist) {
+          s.moved = true; // drifted too far — a drag, not a tap
+        }
+        // Finger-drag scroll: same sign convention as wheelDelta (positive =
+        // content scrolls forward). Dragging up moves content up, so a
+        // downward finger movement (positive dy) scrolls backward.
+        touchDragDeltaY += p.y - (s.lastY ?? s.y);
+        s.lastY = p.y;
       }
     }
   }
@@ -341,12 +349,22 @@ export function endFrameInput() {
   pressedActions.clear();
   taps.length = 0; // unconsumed taps don't leak into later frames
   wheelDelta = 0; // unconsumed wheel doesn't leak into later frames/screens
+  touchDragDeltaY = 0; // unconsumed drag doesn't leak into later frames/screens
 }
 
 // Accumulated wheel deltaY since last consume (0 if none). Positive = down.
 export function consumeWheel() {
   const d = wheelDelta;
   wheelDelta = 0;
+  return d;
+}
+
+// Accumulated finger-drag deltaY since last consume, CSS px (0 if none).
+// Positive = finger moved down. Lets scroll screens support touch dragging
+// the same way they already support the mouse wheel.
+export function consumeTouchDragY() {
+  const d = touchDragDeltaY;
+  touchDragDeltaY = 0;
   return d;
 }
 
