@@ -49,12 +49,17 @@ export function drawUpgradeScreen(ctx, view, options, selectedIndex = 0) {
   if (n === 0) return;
 
   if (stacked) {
-    // Vertical, full-width cards — big tap targets on small screens.
+    // Vertical, full-width cards — big tap targets on small screens. Sized to
+    // fit their content (badge + title + a couple lines of text), not
+    // stretched to fill the leftover vertical space — three of them shouldn't
+    // swallow the whole screen.
     const cardW = Math.min(420, w - 32);
     const gap = 14;
     const top = titleY + 52;
-    const cardH = Math.min(190, (h - top - 24 - (n - 1) * gap) / n);
-    let y = top;
+    const avail = h - top - 24;
+    const cardH = Math.min(140, (avail - (n - 1) * gap) / n);
+    const totalH = n * cardH + (n - 1) * gap;
+    let y = top + Math.max(0, (avail - totalH) / 2); // center the (now shorter) stack
     for (let i = 0; i < n; i++) {
       addRegion(`pick:${i}`, w / 2 - cardW / 2, y, cardW, cardH);
       drawCard(ctx, w / 2 - cardW / 2, y, cardW, cardH, i + 1, options[i], i === selectedIndex);

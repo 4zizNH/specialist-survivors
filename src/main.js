@@ -13,6 +13,7 @@ import {
   endFrameInput,
   consumeTap,
   consumeWheel,
+  consumeTouchDragY,
   setTouchJoystickEnabled,
   padDisconnected,
 } from "./engine/input.js";
@@ -58,7 +59,7 @@ import { drawFusion, fusionCols } from "./ui/fusionScreen.js";
 import { fuse, fusionInfo } from "./meta/fusion.js";
 import { drawPauseMenu, drawSettings, PAUSE_OPTIONS } from "./ui/pauseMenu.js";
 import { createToasts } from "./ui/toasts.js";
-import { drawAchievements, achievementRows } from "./ui/achievementsScreen.js";
+import { drawAchievements, achievementRows, SCROLL_ROW_STEP } from "./ui/achievementsScreen.js";
 import { buyUpgrade, SHOP_UPGRADES } from "./data/shop.js";
 import { loadSave, writeSave, resetSave } from "./meta/saveManager.js";
 import { createRunPlayer } from "./meta/runSetup.js";
@@ -640,6 +641,7 @@ function handleTransitions() {
     case GameState.ACHIEVEMENTS: {
       const maxScroll = Math.max(0, achievementRows(save).length - 6);
       const wheel = consumeWheel();
+      const dragY = consumeTouchDragY();
       if (pressed("cancel") || tapId === "back") machine.transition(GameState.HUB);
       else if (pressed("navUp") || tapId === "scrollUp")
         achievementsScroll = Math.max(0, achievementsScroll - 1);
@@ -647,6 +649,10 @@ function handleTransitions() {
         achievementsScroll = Math.min(maxScroll, achievementsScroll + 1);
       else if (wheel !== 0)
         achievementsScroll = Math.max(0, Math.min(maxScroll, achievementsScroll + Math.sign(wheel)));
+      else if (dragY !== 0)
+        // Finger-scroll: dragging up reveals further rows (fractional, so it
+        // tracks the finger 1:1 instead of snapping a whole row per touch).
+        achievementsScroll = Math.max(0, Math.min(maxScroll, achievementsScroll - dragY / SCROLL_ROW_STEP));
       break;
     }
 
