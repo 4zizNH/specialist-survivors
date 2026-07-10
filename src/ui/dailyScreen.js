@@ -96,8 +96,9 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
   fitFont(ctx, `${rar.label.toUpperCase()} ${tool.name}`, availW, 14, { minPx: 11, weight: "700", family: "ui-monospace, monospace" });
   ctx.fillText(`${rar.label.toUpperCase()} ${tool.name}`, tx, py + 54);
   ctx.fillStyle = "#9a9ab0";
-  ctx.font = "12px ui-monospace, monospace";
-  ctx.fillText(`${spec.label.toUpperCase()} · DMG ${tool.damage} · CD ${tool.cooldown}s · AR ${tool.area}`, tx, py + 76);
+  const statLine = `${spec.label.toUpperCase()} · DMG ${tool.damage} · CD ${tool.cooldown}s · AR ${tool.area}`;
+  fitFont(ctx, statLine, availW, 12, { minPx: 10, weight: "400", family: "ui-monospace, monospace" });
+  ctx.fillText(statLine, tx, py + 76);
 
   let flow = py + ph; // running y below the band
 
@@ -106,7 +107,11 @@ export function drawDaily(ctx, view, { save, selectedButton, message }) {
   if (compact) {
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffb03a";
-    ctx.font = "700 12px system-ui, sans-serif";
+    fitFont(ctx, "⚖ Fair run — everyone is Level 1 (no meta bonuses today)", w - 24, 12, {
+      minPx: 10,
+      weight: "700",
+      family: "system-ui, sans-serif",
+    });
     ctx.fillText("⚖ Fair run — everyone is Level 1 (no meta bonuses today)", w / 2, flow + 22);
     flow += 34;
   } else {

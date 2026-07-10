@@ -27,3 +27,12 @@ export function fitFont(ctx, text, maxWidth, maxPx, opts = {}) {
   ctx.font = `${weight} ${px}px ${family}`;
   return px;
 }
+
+// Truncates `text` with an ellipsis so it fits `maxW` at the CURRENT ctx.font
+// (caller sets font/color first). Returns the text unchanged if it already fits.
+export function clipText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
+  return s + "…";
+}

@@ -8,6 +8,7 @@ import { SPECIALIZATIONS, CHARACTERS_LIST } from "../data/characters.js";
 import { resolveToolWeaponDef } from "../data/tools.js";
 import { EVOLUTIONS } from "../data/balance.js";
 import { PASSIVES } from "../data/passives.js";
+import { clipText } from "./responsive.js";
 
 export function drawToolCard(ctx, x, y, w, h, tool, opts = {}) {
   const {
@@ -75,26 +76,31 @@ export function drawToolCard(ctx, x, y, w, h, tool, opts = {}) {
   fitMonoFont(ctx, line, w - 24, 12);
   ctx.fillText(line, x + 12, y + 74);
 
-  // Stack count badge (×N, bottom-right).
+  // Stack count badge (×N, bottom-right) — measured up front so the
+  // equipped/lock text below stays clear of it (they used to sit on the same
+  // baseline and collide once a stack had a count and a locked reason).
+  let countBadgeW = 0;
   if (count > 1) {
+    ctx.font = "700 14px ui-monospace, monospace";
+    countBadgeW = ctx.measureText(`×${count}`).width;
     ctx.textAlign = "right";
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#ffd34d";
-    ctx.font = "700 14px ui-monospace, monospace";
     ctx.fillText(`×${count}`, x + w - 12, y + h - 10);
     ctx.textAlign = "left"; // restore for the badges below
   }
 
   // Equipped badge or lock reason.
+  const bottomTextMaxW = w - 24 - (countBadgeW ? countBadgeW + 14 : 0);
   if (equipped) {
     ctx.fillStyle = "#5fd66f";
     ctx.font = "700 11px ui-monospace, monospace";
-    ctx.fillText("● EQUIPPED", x + 12, y + h - 12);
+    ctx.fillText(clipText(ctx, "● EQUIPPED", bottomTextMaxW), x + 12, y + h - 12);
   } else if (dimmed && lockText) {
     ctx.globalAlpha = 1; // reason stays readable over the dim
     ctx.fillStyle = "#c85a5a";
     ctx.font = "italic 11px system-ui, sans-serif";
-    ctx.fillText("🔒 " + lockText, x + 12, y + h - 12);
+    ctx.fillText(clipText(ctx, "🔒 " + lockText, bottomTextMaxW), x + 12, y + h - 12);
   }
 
   ctx.restore();

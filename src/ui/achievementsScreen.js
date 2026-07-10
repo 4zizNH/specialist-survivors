@@ -12,6 +12,7 @@ import {
 } from "../meta/achievements.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine, drawBackChip, isTouch } from "./inputHints.js";
+import { clipText } from "./responsive.js";
 
 const ROW_H = 62;
 const ROW_GAP = 10;
@@ -198,14 +199,6 @@ function drawRow(ctx, x, y, w, { def, done, cur, goal }) {
       ctx.fill();
     }
   }
-}
-
-// Truncate `text` with an ellipsis so it fits `maxW` at the current font.
-function clipText(ctx, text, maxW) {
-  if (ctx.measureText(text).width <= maxW) return text;
-  let s = text;
-  while (s.length > 1 && ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
-  return s + "…";
 }
 
 function roundRect(ctx, x, y, w, h, r) {

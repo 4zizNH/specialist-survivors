@@ -12,6 +12,7 @@ import { CHARACTERS_BY_ID } from "../data/characters.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine, drawBackChip } from "./inputHints.js";
 import { drawDialogButton } from "./hubScreen.js";
+import { clipText } from "./responsive.js";
 
 // Grid columns shrink on narrow screens so cards stay readable/tappable.
 export function fusionCols(viewWidth) {
@@ -105,20 +106,30 @@ function drawPreview(ctx, view, save, tool, top) {
   const rar = RARITIES[tool.rarity];
   const cur = resolveToolWeaponDef(tool);
 
+  // Title (left) and the status text drawn further down share this vertical
+  // band with a right-aligned column — each is clipped to its own half so a
+  // long name and a long status message can never run into each other.
+  const colMaxW = width / 2 - 24;
+
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#f0f0f6";
   ctx.font = "700 19px system-ui, sans-serif";
-  ctx.fillText(`${tool.name}  ×${tool.count}`, x + 18, top + 30);
+  ctx.fillText(clipText(ctx, `${tool.name}  ×${tool.count}`, colMaxW), x + 18, top + 30);
   ctx.fillStyle = rar.color;
   ctx.font = "700 12px ui-monospace, monospace";
   ctx.fillText(rar.label.toUpperCase(), x + 18, top + 50);
 
   if (!info.target) {
-    // Legendary cap — shown, not hidden.
+    // Legendary cap — shown, not hidden, and wrapped so the sentence can't
+    // run past the panel (or off the screen) on narrow viewports.
     ctx.fillStyle = "#ffb03a";
     ctx.font = "700 15px system-ui, sans-serif";
-    ctx.fillText("★ MAX RARITY — this tool cannot be fused further.", x + 18, top + 86);
+    let ly = top + 82;
+    for (const line of wrap(ctx, "★ MAX RARITY — this tool cannot be fused further.", width - 36)) {
+      ctx.fillText(line, x + 18, ly);
+      ly += 20;
+    }
     return;
   }
 
@@ -138,41 +149,29 @@ function drawPreview(ctx, view, save, tool, top) {
   ctx.font = "700 14px ui-monospace, monospace";
   ctx.fillText(trar.label, x + 18 + prefixW, top + 80);
 
-  // Stat deltas.
-  ctx.font = "13px ui-monospace, monospace";
-  ctx.fillStyle = "#9a9ab0";
-  const deltas = [
-    `DMG ${cur.damage} → `,
-    `CD ${cur.cooldown}s → `,
-    `AREA ${cur.area} → `,
-  ];
+  // Stat deltas — font shrinks to fit so legendary-sized numbers never run
+  // past the panel's right edge (fixed 13px + 3 columns used to overflow).
+  const deltas = [`DMG ${cur.damage} → `, `CD ${cur.cooldown}s → `, `AREA ${cur.area} → `];
   const values = [`${nxt.damage}`, `${nxt.cooldown}s`, `${nxt.area}`];
-  let px = x + 18;
-  for (let i = 0; i < deltas.length; i++) {
-    ctx.fillStyle = "#9a9ab0";
-    ctx.fillText(deltas[i], px, top + 106);
-    px += ctx.measureText(deltas[i]).width;
-    ctx.fillStyle = "#5fd66f";
-    ctx.fillText(values[i], px, top + 106);
-    px += ctx.measureText(values[i]).width + 26;
-  }
+  drawDeltaRow(ctx, x + 18, top + 106, width - 36, deltas, values);
 
-  // Status (fusable / why not / unequip warning).
+  // Status (fusable / why not / unequip warning) — clipped to its own column
+  // (see colMaxW above) so it can never collide with the title.
   ctx.textAlign = "right";
   if (info.fusable) {
     ctx.fillStyle = "#5fd66f";
     ctx.font = "700 14px system-ui, sans-serif";
-    ctx.fillText("READY — press Enter to fuse", x + width - 18, top + 34);
+    ctx.fillText(clipText(ctx, "READY — press Enter to fuse", colMaxW), x + width - 18, top + 34);
     if (info.wouldUnequip.length) {
       ctx.fillStyle = "#ffb03a";
       ctx.font = "12px system-ui, sans-serif";
       const names = info.wouldUnequip.map((c) => CHARACTERS_BY_ID[c]?.name || c).join(", ");
-      ctx.fillText(`⚠ will unequip from ${names}`, x + width - 18, top + 54);
+      ctx.fillText(clipText(ctx, `⚠ will unequip from ${names}`, colMaxW), x + width - 18, top + 54);
     }
   } else {
     ctx.fillStyle = "#c85a5a";
     ctx.font = "600 13px system-ui, sans-serif";
-    ctx.fillText(info.reason, x + width - 18, top + 34);
+    ctx.fillText(clipText(ctx, info.reason, colMaxW), x + width - 18, top + 34);
   }
 }
 
@@ -249,6 +248,49 @@ function drawReveal(ctx, view, result, elapsed) {
   }
   ctx.globalAlpha = 1;
   addRegion("confirm", 0, 0, w, h); // tap anywhere dismisses the reveal
+}
+
+function wrap(ctx, text, maxWidth) {
+  const words = String(text).split(" ");
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// A row of "label value" pairs (label gray, value green), shrinking font size
+// to fit `maxWidth` so it never overflows the preview panel.
+function drawDeltaRow(ctx, x, y, maxWidth, labels, values) {
+  const colGap = 26;
+  const widthAt = (px) => {
+    ctx.font = `${px}px ui-monospace, monospace`;
+    let total = (labels.length - 1) * colGap;
+    for (let i = 0; i < labels.length; i++) {
+      total += ctx.measureText(labels[i]).width + ctx.measureText(values[i]).width;
+    }
+    return total;
+  };
+  let px = 13;
+  while (px > 9 && widthAt(px) > maxWidth) px--;
+  ctx.font = `${px}px ui-monospace, monospace`;
+  let cx = x;
+  for (let i = 0; i < labels.length; i++) {
+    ctx.fillStyle = "#9a9ab0";
+    ctx.fillText(labels[i], cx, y);
+    cx += ctx.measureText(labels[i]).width;
+    ctx.fillStyle = "#5fd66f";
+    ctx.fillText(values[i], cx, y);
+    cx += ctx.measureText(values[i]).width + colGap;
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
