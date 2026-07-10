@@ -8,6 +8,7 @@ import { PASSIVES } from "../data/passives.js";
 import { evolutionFor, evolutionStatus } from "../systems/evolution.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine, drawBackChip } from "./inputHints.js";
+import { fitFont } from "./responsive.js";
 
 export const PAUSE_OPTIONS = [
   { id: "resume", label: "Resume" },
@@ -130,14 +131,18 @@ export function drawSettings(ctx, view, settings) {
   ctx.font = "700 14px ui-monospace, monospace";
   ctx.fillText("— KEY BINDINGS —", w / 2, h * 0.47);
 
+  // Each column is fitted to its half of the screen — on a phone-width pause
+  // menu, "F (category) · R (rarity)" used to run past the right edge.
+  const colMaxW = w / 2 - 34;
   let ky = h * 0.47 + 34;
-  ctx.font = "14px ui-monospace, monospace";
   for (const [action, keys] of KEY_REFERENCE) {
     ctx.textAlign = "right";
     ctx.fillStyle = "#9a9ab0";
+    fitFont(ctx, action, colMaxW, 14, { minPx: 10, weight: "400", family: "ui-monospace, monospace" });
     ctx.fillText(action, w / 2 - 14, ky);
     ctx.textAlign = "left";
     ctx.fillStyle = "#e0e0ea";
+    fitFont(ctx, keys, colMaxW, 14, { minPx: 10, weight: "400", family: "ui-monospace, monospace" });
     ctx.fillText(keys, w / 2 + 14, ky);
     ky += 26;
   }

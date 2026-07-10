@@ -5,6 +5,7 @@
 import { SHOP_UPGRADES, getShopLevel } from "../data/shop.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine, drawBackChip } from "./inputHints.js";
+import { clipText } from "./responsive.js";
 
 export function drawShop(ctx, view, { save, selectedIndex, message }) {
   const w = view.width;
@@ -25,7 +26,7 @@ export function drawShop(ctx, view, { save, selectedIndex, message }) {
 
   // Upgrade rows.
   const rowW = Math.min(640, w - 80);
-  const rowH = 92;
+  const rowH = 104;
   const gap = 16;
   const x = w / 2 - rowW / 2;
   let y = 160;
@@ -53,18 +54,21 @@ export function drawShop(ctx, view, { save, selectedIndex, message }) {
     ctx.fillText(u.name, x + 20, y + 30);
     ctx.fillStyle = "#9a9ab0";
     ctx.font = "13px system-ui, sans-serif";
-    ctx.fillText(u.desc, x + 20, y + 52);
+    // Description sits on nearly the same line as the price/status column to
+    // its right (only a few px of vertical gap) — clip it so a long
+    // description can't run underneath "not enough gold" etc.
+    ctx.fillText(clipText(ctx, u.desc, rowW - 40 - 140), x + 20, y + 52);
 
     // Level pips.
     let px = x + 20;
     for (let p = 0; p < u.max; p++) {
       ctx.fillStyle = p < lvl ? "#ffd34d" : "rgba(255,255,255,0.15)";
-      ctx.fillRect(px, y + 64, 22, 6);
+      ctx.fillRect(px, y + 76, 22, 6);
       px += 27;
     }
     ctx.fillStyle = "#7a7a8c";
     ctx.font = "12px ui-monospace, monospace";
-    ctx.fillText(u.effectText(lvl), px + 8, y + 71);
+    ctx.fillText(u.effectText(lvl), px + 8, y + 86);
 
     // Price / status.
     ctx.textAlign = "right";

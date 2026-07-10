@@ -9,6 +9,7 @@ import { SPECIALIZATIONS } from "../data/characters.js";
 import { canEquip, equipReason } from "../meta/inventory.js";
 import { addRegion } from "../engine/hitRegions.js";
 import { hintLine, drawBackChip } from "./inputHints.js";
+import { fitFont } from "./responsive.js";
 
 // Grid columns shrink on narrow screens so cards stay readable/tappable.
 export function equipCols(viewWidth) {
@@ -36,18 +37,28 @@ export function drawEquip(ctx, view, { character, level, tools, selectedIndex, l
   ctx.textBaseline = "middle";
   ctx.fillText(character.name[0], 116, 53);
 
+  // Equip slot summary (right side). Full names on wide screens; a compact
+  // count on narrow ones so it can't collide with the character name. Measure
+  // the narrow badge FIRST so the name can be fitted to whatever room is
+  // actually left for it — it used to be drawn at a fixed size and ran
+  // straight into the badge on long names.
+  const equippedNames = (loadout || []).map((t) => t.name);
+  let narrowBadgeW = 0;
+  if (narrow) {
+    ctx.font = "700 14px ui-monospace, monospace";
+    narrowBadgeW = ctx.measureText(`${equippedNames.length}/${slots} equipped`).width;
+  }
+
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#f0f0f6";
-  ctx.font = "700 22px system-ui, sans-serif";
+  const nameMaxW = narrow ? w - 14 - narrowBadgeW - 12 - 150 : w - 150 - 20;
+  fitFont(ctx, character.name, Math.max(50, nameMaxW), 22, { minPx: 14 });
   ctx.fillText(`${character.name}`, 150, 46);
   ctx.font = "700 12px ui-monospace, monospace";
   ctx.fillStyle = spec.color;
   ctx.fillText(`${spec.label.toUpperCase()} · LV ${level}`, 150, 66);
 
-  // Equip slot summary (right side). Full names on wide screens; a compact
-  // count on narrow ones so it can't collide with the character name.
-  const equippedNames = (loadout || []).map((t) => t.name);
   ctx.textAlign = "right";
   if (narrow) {
     ctx.fillStyle = equippedNames.length ? "#e0e0ea" : "#5a5a6c";
