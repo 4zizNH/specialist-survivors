@@ -1,4 +1,4 @@
-# Specialist Survivors
+# Wyrdclass
 
 A 2D top-down action-roguelite (Vampire Survivors-style) with an RPG twist:
 a roster of **specialists** who level up permanently across runs, and
