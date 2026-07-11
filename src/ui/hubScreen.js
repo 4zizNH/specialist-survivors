@@ -34,8 +34,8 @@ export function drawHub(ctx, view, { save, selectedIndex, dailyStatus }) {
   ctx.textBaseline = "alphabetic";
   let y = shortH ? 30 : 52;
   ctx.fillStyle = "#e8e8f0";
-  const titlePx = fitFont(ctx, "SPECIALIST SURVIVORS", w - 28, shortH ? 30 : 52, { minPx: 20 });
-  ctx.fillText("SPECIALIST SURVIVORS", w / 2, y);
+  const titlePx = fitFont(ctx, "WYRDCLASS", w - 28, shortH ? 30 : 52, { minPx: 20 });
+  ctx.fillText("WYRDCLASS", w / 2, y);
   y += titlePx * 0.35 + 20;
 
   if (!shortH) {

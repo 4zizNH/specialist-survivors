@@ -1,4 +1,4 @@
-# Specialist Survivors — Design + Technical Plan
+# Wyrdclass — Design + Technical Plan
 
 Reference doc for the build. Working title; everything here is subject to tuning.
 
